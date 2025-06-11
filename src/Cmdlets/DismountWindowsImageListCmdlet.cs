@@ -1,0 +1,257 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Management.Automation;
+using PSWindowsImageTools.Models;
+using PSWindowsImageTools.Services;
+
+namespace PSWindowsImageTools.Cmdlets
+{
+    /// <summary>
+    /// Dismounts Windows images with options to save or discard changes
+    /// </summary>
+    [Cmdlet(VerbsData.Dismount, "WindowsImageList")]
+    [OutputType(typeof(MountedWindowsImage[]))]
+    public class DismountWindowsImageListCmdlet : PSCmdlet
+    {
+        /// <summary>
+        /// Mounted image objects to dismount
+        /// </summary>
+        [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true, ParameterSetName = "ByObject")]
+        [ValidateNotNull]
+        public MountedWindowsImage[] MountedImages { get; set; } = Array.Empty<MountedWindowsImage>();
+
+        /// <summary>
+        /// Mount paths to dismount
+        /// </summary>
+        [Parameter(Mandatory = true, Position = 0, ParameterSetName = "ByPath")]
+        [ValidateNotNullOrEmpty]
+        public string[] Path { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Save changes made to the mounted images (default is discard)
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter Save { get; set; }
+
+        /// <summary>
+        /// Force dismount even if there are open handles
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter Force { get; set; }
+
+        /// <summary>
+        /// Remove mount directories after dismounting
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter RemoveDirectories { get; set; }
+
+        private readonly List<MountedWindowsImage> _allMountedImages = new List<MountedWindowsImage>();
+
+        /// <summary>
+        /// Processes pipeline input
+        /// </summary>
+        protected override void ProcessRecord()
+        {
+            if (ParameterSetName == "ByObject")
+            {
+                _allMountedImages.AddRange(MountedImages);
+            }
+            else if (ParameterSetName == "ByPath")
+            {
+                // Convert paths to MountedWindowsImage objects
+                foreach (var path in Path)
+                {
+                    var mountedImage = new MountedWindowsImage
+                    {
+                        MountId = Guid.NewGuid().ToString(),
+                        MountPath = path,
+                        Status = MountStatus.Mounted,
+                        ImageName = $"Image at {path}",
+                        MountedAt = DateTime.UtcNow
+                    };
+                    _allMountedImages.Add(mountedImage);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes all collected input at the end
+        /// </summary>
+        protected override void EndProcessing()
+        {
+            if (_allMountedImages.Count == 0)
+            {
+                LoggingService.WriteWarning(this, "No mounted images provided for dismounting");
+                return;
+            }
+
+            var startTime = DateTime.UtcNow;
+            var results = new List<MountedWindowsImage>();
+
+            try
+            {
+                LoggingService.LogOperationStart(this, "DismountImageList", $"Dismounting {_allMountedImages.Count} images");
+
+                // Show initial progress
+                LoggingService.WriteProgress(this, "Dismounting Windows Images", 
+                    $"Preparing to dismount {_allMountedImages.Count} images", 
+                    $"Save changes: {(Save.IsPresent ? "Yes" : "No")}", 0);
+
+                // Dismount each image
+                for (int i = 0; i < _allMountedImages.Count; i++)
+                {
+                    var mountedImage = _allMountedImages[i];
+                    var progress = (int)((double)(i + 1) / _allMountedImages.Count * 100);
+                    
+                    LoggingService.WriteProgress(this, "Dismounting Windows Images", 
+                        $"[{i + 1} of {_allMountedImages.Count}] - {mountedImage.ImageName}", 
+                        $"Dismounting from {mountedImage.MountPath} ({progress}%)", progress);
+
+                    try
+                    {
+                        var result = DismountSingleImage(mountedImage, i + 1, _allMountedImages.Count);
+                        results.Add(result);
+                        
+                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully dismounted: {mountedImage.MountPath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to dismount {mountedImage.MountPath}: {ex.Message}", ex);
+                        
+                        // Update status to failed
+                        mountedImage.Status = MountStatus.Failed;
+                        mountedImage.ErrorMessage = ex.Message;
+                        results.Add(mountedImage);
+                    }
+                }
+
+                LoggingService.CompleteProgress(this, "Dismounting Windows Images");
+
+                // Show summary
+                var successCount = results.Count(m => m.Status == MountStatus.Unmounted);
+                var failCount = results.Count(m => m.Status == MountStatus.Failed);
+                
+                LoggingService.WriteVerbose(this, $"Dismount operation complete: {successCount} successful, {failCount} failed");
+
+                // Output results
+                WriteObject(results.ToArray());
+
+                var duration = DateTime.UtcNow - startTime;
+                LoggingService.LogOperationComplete(this, "DismountImageList", duration, $"Dismounted {successCount} of {_allMountedImages.Count} images");
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(this, "Failed to dismount images", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Dismounts a single image and returns the updated mounted image object
+        /// </summary>
+        private MountedWindowsImage DismountSingleImage(MountedWindowsImage mountedImage, int currentIndex, int totalCount)
+        {
+            // Create a copy to avoid modifying the original
+            var result = new MountedWindowsImage
+            {
+                MountId = mountedImage.MountId,
+                SourceImagePath = mountedImage.SourceImagePath,
+                ImageIndex = mountedImage.ImageIndex,
+                ImageName = mountedImage.ImageName,
+                Edition = mountedImage.Edition,
+                Architecture = mountedImage.Architecture,
+                MountPath = mountedImage.MountPath,
+                WimGuid = mountedImage.WimGuid,
+                MountedAt = mountedImage.MountedAt,
+                Status = MountStatus.Unmounting,
+                IsReadOnly = mountedImage.IsReadOnly,
+                ImageSize = mountedImage.ImageSize
+            };
+
+            try
+            {
+                // Validate mount path exists
+                if (!Directory.Exists(mountedImage.MountPath))
+                {
+                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Mount path does not exist: {mountedImage.MountPath}");
+                    result.Status = MountStatus.Unmounted;
+                    return result;
+                }
+
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath}");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Save changes: {(Save.IsPresent ? "Yes" : "No")}");
+
+                // Report dismount progress - start
+                LoggingService.WriteProgress(this, "Dismounting Windows Images",
+                    $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
+                    $"Initiating dismount operation from {mountedImage.MountPath}...",
+                    (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
+
+                var dismountStartTime = DateTime.UtcNow;
+                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath, Save.IsPresent);
+                var dismountDuration = DateTime.UtcNow - dismountStartTime;
+
+                result.Status = MountStatus.Unmounted;
+
+                // Report dismount progress - complete
+                LoggingService.WriteProgress(this, "Dismounting Windows Images",
+                    $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
+                    $"Dismount completed in {LoggingService.FormatDuration(dismountDuration)}",
+                    (int)((double)currentIndex / totalCount * 100));
+
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Image dismounted successfully (Duration: {LoggingService.FormatDuration(dismountDuration)})");
+
+                // Remove mount directory if requested
+                if (RemoveDirectories.IsPresent)
+                {
+                    try
+                    {
+                        if (Directory.Exists(mountedImage.MountPath))
+                        {
+                            Directory.Delete(mountedImage.MountPath, true);
+                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Removed mount directory: {mountedImage.MountPath}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Failed to remove mount directory {mountedImage.MountPath}: {ex.Message}");
+                    }
+                }
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                result.Status = MountStatus.Failed;
+                result.ErrorMessage = ex.Message;
+                
+                LoggingService.WriteError(this, $"[{currentIndex} of {totalCount}] - Failed to dismount image: {ex.Message}", ex);
+                
+                // If force is specified, try to clean up anyway
+                if (Force.IsPresent)
+                {
+                    try
+                    {
+                        LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force flag specified, attempting cleanup");
+                        
+                        if (Directory.Exists(mountedImage.MountPath))
+                        {
+                            Directory.Delete(mountedImage.MountPath, true);
+                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force removed mount directory: {mountedImage.MountPath}");
+                        }
+                        
+                        result.Status = MountStatus.Unmounted;
+                    }
+                    catch (Exception forceEx)
+                    {
+                        LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Force cleanup also failed: {forceEx.Message}");
+                    }
+                }
+                
+                return result;
+            }
+        }
+    }
+}
