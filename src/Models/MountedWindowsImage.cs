@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 
 namespace PSWindowsImageTools.Models
 {
@@ -38,9 +39,9 @@ namespace PSWindowsImageTools.Models
         public string Architecture { get; set; } = string.Empty;
 
         /// <summary>
-        /// Path where the image is mounted
+        /// Directory where the image is mounted
         /// </summary>
-        public string MountPath { get; set; } = string.Empty;
+        public DirectoryInfo MountPath { get; set; } = new DirectoryInfo(string.Empty);
 
         /// <summary>
         /// GUID used for organizing mounts from the same WIM file
@@ -71,6 +72,11 @@ namespace PSWindowsImageTools.Models
         /// Size of the source image in bytes
         /// </summary>
         public long ImageSize { get; set; }
+
+        /// <summary>
+        /// Result of the last update installation operation (if any)
+        /// </summary>
+        public UpdateInstallationResult? LastUpdateResult { get; set; }
 
         /// <summary>
         /// Returns a string representation of the mounted image

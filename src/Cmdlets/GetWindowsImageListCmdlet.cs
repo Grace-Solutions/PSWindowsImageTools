@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
+using System.Security.Cryptography;
 using System.Text.Json;
 using PSWindowsImageTools.Models;
 using PSWindowsImageTools.Services;
@@ -67,7 +68,7 @@ namespace PSWindowsImageTools.Cmdlets
 
             try
             {
-                LoggingService.LogOperationStart(this, "GetImageList", $"Processing: {ImagePath.FullName}");
+
 
                 // Validate input file
                 if (!ImagePath.Exists)
@@ -259,17 +260,7 @@ namespace PSWindowsImageTools.Cmdlets
                 LoggingService.LogOperationComplete(this, "GetImageList", duration, 
                     $"Processed {imageInfoList.Count} images from {ImagePath.FullName}");
 
-                // Show output object structure for debugging
-                if (imageInfoList.Count > 0)
-                {
-                    LoggingService.WriteVerbose(this, "OutputStructure", $"Returning {imageInfoList.Count} WindowsImageInfo objects");
-                    LoggingService.WriteVerbose(this, "OutputStructure", $"Sample object structure: Index={imageInfoList[0].Index}, Name='{imageInfoList[0].Name}', Edition='{imageInfoList[0].Edition}', Architecture='{imageInfoList[0].Architecture}', Size={imageInfoList[0].Size}");
-                    if (imageInfoList[0].AdvancedInfo != null)
-                    {
-                        var advanced = imageInfoList[0].AdvancedInfo;
-                        LoggingService.WriteVerbose(this, "OutputStructure", $"AdvancedInfo available: Features={advanced.InstalledFeatures.Count}, Packages={advanced.InstalledPackages.Count}, Drivers={advanced.InstalledDrivers.Count}");
-                    }
-                }
+
 
                 // Output results
                 WriteObject(imageInfoList.ToArray());
@@ -323,12 +314,20 @@ namespace PSWindowsImageTools.Cmdlets
                     var dataTable = dbService.CreateBuildsDataTable();
                     var insertedCount = 0;
 
+                    // Calculate hash once for the source file (deferred for performance)
+                    var sourceHash = "";
+                    if (imageInfoList.Count > 0 && !string.IsNullOrEmpty(imageInfoList[0].SourcePath))
+                    {
+                        sourceHash = CalculateFileHash(imageInfoList[0].SourcePath);
+                        LoggingService.WriteVerbose(this, "DatabaseService", $"Calculated SHA256 hash for database storage");
+                    }
+
                     foreach (var imageInfo in imageInfoList)
                     {
                         var row = dataTable.NewRow();
                         row["Id"] = Guid.NewGuid().ToString();
                         row["SourceImagePath"] = imageInfo.SourcePath ?? "";
-                        row["SourceImageHash"] = imageInfo.SourceHash ?? "";
+                        row["SourceImageHash"] = sourceHash;
                         row["SourceImageHashAlgorithm"] = "SHA256";
                         row["Status"] = "Inventoried";
                         row["ImageCount"] = 1;
@@ -361,6 +360,26 @@ namespace PSWindowsImageTools.Cmdlets
                 {
                     LoggingService.WriteError(this, "DatabaseService", $"Failed to store image records in database", ex);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Calculates SHA256 hash of a file
+        /// </summary>
+        /// <param name="filePath">Path to the file</param>
+        /// <returns>SHA256 hash as hex string</returns>
+        private static string CalculateFileHash(string filePath)
+        {
+            try
+            {
+                using var sha256 = SHA256.Create();
+                using var stream = File.OpenRead(filePath);
+                var hashBytes = sha256.ComputeHash(stream);
+                return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+            }
+            catch (Exception)
+            {
+                return "";
             }
         }
     }

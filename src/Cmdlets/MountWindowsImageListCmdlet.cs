@@ -9,32 +9,25 @@ using PSWindowsImageTools.Services;
 namespace PSWindowsImageTools.Cmdlets
 {
     /// <summary>
-    /// Mounts Windows images from WIM/ESD files with progress reporting
+    /// Mounts Windows images from WindowsImageInfo objects (from Get-WindowsImageList)
     /// </summary>
     [Cmdlet(VerbsData.Mount, "WindowsImageList")]
     [OutputType(typeof(MountedWindowsImage[]))]
     public class MountWindowsImageListCmdlet : PSCmdlet
     {
         /// <summary>
-        /// Path to the WIM or ESD file
+        /// Windows image information objects to mount (from Get-WindowsImageList pipeline)
         /// </summary>
-        [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true)]
-        [ValidateNotNullOrEmpty]
-        public FileInfo ImagePath { get; set; } = null!;
+        [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true, ParameterSetName = "FromPipeline")]
+        [ValidateNotNull]
+        public WindowsImageInfo[] InputObject { get; set; } = null!;
 
         /// <summary>
-        /// Inclusion filter scriptblock to select which images to mount (e.g., {$_.Name -like "*Pro*"} or {$_.Index -eq 1})
+        /// Windows image information objects to mount (from parameter)
         /// </summary>
-        [Parameter(Mandatory = false)]
+        [Parameter(Mandatory = true, Position = 0, ParameterSetName = "FromParameter")]
         [ValidateNotNull]
-        public ScriptBlock? InclusionFilter { get; set; }
-
-        /// <summary>
-        /// Exclusion filter scriptblock to exclude images from mounting (e.g., {$_.Name -like "*Enterprise*"})
-        /// </summary>
-        [Parameter(Mandatory = false)]
-        [ValidateNotNull]
-        public ScriptBlock? ExclusionFilter { get; set; }
+        public WindowsImageInfo[] ImageInfo { get; set; } = null!;
 
         /// <summary>
         /// Mount images as read-write (default is read-only)
@@ -46,148 +39,96 @@ namespace PSWindowsImageTools.Cmdlets
         /// Custom mount root directory (uses temp if not specified)
         /// </summary>
         [Parameter(Mandatory = false)]
-        [ValidateNotNullOrEmpty]
-        public string? MountRoot { get; set; }
+        [ValidateNotNull]
+        public DirectoryInfo? MountRoot { get; set; }
+
+        private readonly List<WindowsImageInfo> _allImageInfo = new List<WindowsImageInfo>();
 
         /// <summary>
-        /// Processes the cmdlet
+        /// Processes pipeline input
         /// </summary>
         protected override void ProcessRecord()
+        {
+            try
+            {
+                // Collect image info objects from pipeline or parameter
+                var imagesToProcess = ParameterSetName == "FromPipeline" ? InputObject : ImageInfo;
+                _allImageInfo.AddRange(imagesToProcess);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(this, $"Failed to process record: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Processes all collected images
+        /// </summary>
+        protected override void EndProcessing()
         {
             var startTime = DateTime.UtcNow;
             var mountedImages = new List<MountedWindowsImage>();
 
             try
             {
-                LoggingService.LogOperationStart(this, "MountImageList", $"Mounting images from: {ImagePath.FullName}");
-
-                // Validate input file
-                if (!ImagePath.Exists)
+                if (_allImageInfo.Count == 0)
                 {
-                    LoggingService.WriteError(this, $"Image file not found: {ImagePath.FullName}");
+                    LoggingService.WriteWarning(this, "No image information provided for mounting");
                     return;
                 }
 
                 // Get mount root directory
-                var mountRoot = MountRoot ?? ConfigurationService.DefaultMountRootDirectory;
+                var mountRoot = MountRoot?.FullName ?? ConfigurationService.DefaultMountRootDirectory;
                 LoggingService.WriteVerbose(this, $"Using mount root directory: {mountRoot}");
 
-                // Initialize DISM service
-                using var dismService = new DismService();
-                var imageFilePath = ImagePath.FullName;
+                LoggingService.WriteVerbose(this, $"Mounting {_allImageInfo.Count} images");
 
-                LoggingService.WriteVerbose(this, $"Getting image list from: {imageFilePath}");
-
-                // Get list of images in the file
-                var imageInfoList = dismService.GetImageInfo(imageFilePath, this);
-
-                if (imageInfoList.Count == 0)
-                {
-                    LoggingService.WriteWarning(this, "No images found in the specified file");
-                    return;
-                }
-
-                LoggingService.WriteVerbose(this, $"Found {imageInfoList.Count} images in file");
-
-                // Apply inclusion filter first (if provided)
-                if (InclusionFilter != null)
-                {
-                    var includedImages = new List<WindowsImageInfo>();
-
-                    foreach (var imageInfo in imageInfoList)
-                    {
-                        try
-                        {
-                            // Create a PSVariable for $_ to pass to the scriptblock
-                            var dollarUnder = new PSVariable("_", imageInfo);
-                            var results = InclusionFilter.InvokeWithContext(null, new List<PSVariable> { dollarUnder });
-
-                            if (results.Count > 0 && LanguagePrimitives.IsTrue(results[0]))
-                            {
-                                includedImages.Add(imageInfo);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LoggingService.WriteWarning(this, $"Inclusion filter evaluation failed for image {imageInfo.Index}: {ex.Message}");
-                        }
-                    }
-
-                    imageInfoList = includedImages;
-                    LoggingService.WriteVerbose(this, $"Inclusion filter applied: {imageInfoList.Count} images included");
-                }
-
-                // Apply exclusion filter second (if provided)
-                if (ExclusionFilter != null)
-                {
-                    var nonExcludedImages = new List<WindowsImageInfo>();
-
-                    foreach (var imageInfo in imageInfoList)
-                    {
-                        try
-                        {
-                            // Create a PSVariable for $_ to pass to the scriptblock
-                            var dollarUnder = new PSVariable("_", imageInfo);
-                            var results = ExclusionFilter.InvokeWithContext(null, new List<PSVariable> { dollarUnder });
-
-                            // If exclusion filter returns false or null, include the image
-                            if (results.Count == 0 || !LanguagePrimitives.IsTrue(results[0]))
-                            {
-                                nonExcludedImages.Add(imageInfo);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LoggingService.WriteWarning(this, $"Exclusion filter evaluation failed for image {imageInfo.Index}: {ex.Message}");
-                            // On error, include the image (fail-safe)
-                            nonExcludedImages.Add(imageInfo);
-                        }
-                    }
-
-                    imageInfoList = nonExcludedImages;
-                    LoggingService.WriteVerbose(this, $"Exclusion filter applied: {imageInfoList.Count} images remaining");
-                }
-
-                if (imageInfoList.Count == 0)
-                {
-                    LoggingService.WriteWarning(this, "No images match the specified filters");
-                    return;
-                }
-
-                // Generate one GUID per WIM file for mount organization
-                var wimGuid = Guid.NewGuid().ToString();
+                // Group images by source path to generate one GUID per WIM file
+                var imageGroups = _allImageInfo.GroupBy(img => img.SourcePath).ToList();
 
                 // Show initial progress
-                LoggingService.WriteProgress(this, "Mounting Windows Images", 
-                    $"Found {imageInfoList.Count} images to mount", 
-                    $"Preparing to mount {imageInfoList.Count} images", 0);
+                LoggingService.WriteProgress(this, "Mounting Windows Images",
+                    $"Found {_allImageInfo.Count} images to mount",
+                    $"Preparing to mount {_allImageInfo.Count} images", 0);
+
+                // Generate one GUID per unique source path for mount organization
+                var sourcePathGuids = new Dictionary<string, string>();
+                foreach (var imageInfo in _allImageInfo)
+                {
+                    if (!sourcePathGuids.ContainsKey(imageInfo.SourcePath))
+                    {
+                        sourcePathGuids[imageInfo.SourcePath] = Guid.NewGuid().ToString();
+                    }
+                }
 
                 // Mount each image
-                for (int i = 0; i < imageInfoList.Count; i++)
+                for (int i = 0; i < _allImageInfo.Count; i++)
                 {
-                    var imageInfo = imageInfoList[i];
-                    var progress = (int)((double)(i + 1) / imageInfoList.Count * 100);
-                    
-                    LoggingService.WriteProgress(this, "Mounting Windows Images", 
-                        $"[{i + 1} of {imageInfoList.Count}] - {imageInfo.Name}", 
+                    var imageInfo = _allImageInfo[i];
+                    var progress = (int)((double)(i + 1) / _allImageInfo.Count * 100);
+                    var wimGuid = sourcePathGuids[imageInfo.SourcePath];
+
+                    LoggingService.WriteProgress(this, "Mounting Windows Images",
+                        $"[{i + 1} of {_allImageInfo.Count}] - {imageInfo.Name}",
                         $"Mounting Image Index {imageInfo.Index} ({progress}%)", progress);
 
                     try
                     {
-                        var mountedImage = MountSingleImage(imageInfo, mountRoot, wimGuid, i + 1, imageInfoList.Count);
+                        var mountedImage = MountSingleImage(imageInfo, mountRoot, wimGuid, i + 1, _allImageInfo.Count);
                         mountedImages.Add(mountedImage);
-                        
-                        LoggingService.WriteVerbose(this, $"[{i + 1} of {imageInfoList.Count}] - Successfully mounted: {mountedImage.MountPath}");
+
+                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allImageInfo.Count}] - Successfully mounted: {mountedImage.MountPath}");
                     }
                     catch (Exception ex)
                     {
-                        LoggingService.WriteError(this, $"[{i + 1} of {imageInfoList.Count}] - Failed to mount image {imageInfo.Index}: {ex.Message}", ex);
-                        
+                        LoggingService.WriteError(this, $"[{i + 1} of {_allImageInfo.Count}] - Failed to mount image {imageInfo.Index}: {ex.Message}", ex);
+
                         // Create a failed mount object for tracking
                         var failedMount = new MountedWindowsImage
                         {
                             MountId = Guid.NewGuid().ToString(),
-                            SourceImagePath = imageFilePath,
+                            SourceImagePath = imageInfo.SourcePath,
                             ImageIndex = imageInfo.Index,
                             ImageName = imageInfo.Name,
                             Edition = imageInfo.Edition,
@@ -207,14 +148,14 @@ namespace PSWindowsImageTools.Cmdlets
                 // Show summary
                 var successCount = mountedImages.Count(m => m.Status == MountStatus.Mounted);
                 var failCount = mountedImages.Count(m => m.Status == MountStatus.Failed);
-                
+
                 LoggingService.WriteVerbose(this, $"Mount operation complete: {successCount} successful, {failCount} failed");
 
                 // Output results
                 WriteObject(mountedImages.ToArray());
 
                 var duration = DateTime.UtcNow - startTime;
-                LoggingService.LogOperationComplete(this, "MountImageList", duration, $"Mounted {successCount} of {imageInfoList.Count} images");
+                LoggingService.LogOperationComplete(this, "MountImageList", duration, $"Mounted {successCount} of {_allImageInfo.Count} images");
             }
             catch (Exception ex)
             {
@@ -236,12 +177,12 @@ namespace PSWindowsImageTools.Cmdlets
             var mountedImage = new MountedWindowsImage
             {
                 MountId = mountId,
-                SourceImagePath = imageInfo.SourcePath ?? ImagePath.FullName,
+                SourceImagePath = imageInfo.SourcePath,
                 ImageIndex = imageInfo.Index,
                 ImageName = imageInfo.Name,
                 Edition = imageInfo.Edition,
                 Architecture = imageInfo.Architecture,
-                MountPath = mountPath,
+                MountPath = new DirectoryInfo(mountPath),
                 WimGuid = wimGuid,
                 Status = MountStatus.Mounting,
                 IsReadOnly = !ReadWrite.IsPresent,
@@ -259,7 +200,7 @@ namespace PSWindowsImageTools.Cmdlets
                     (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
 
                 var mountStartTime = DateTime.UtcNow;
-                Microsoft.Dism.DismApi.MountImage(ImagePath.FullName, mountPath, imageInfo.Index, readOnly: !ReadWrite.IsPresent);
+                Microsoft.Dism.DismApi.MountImage(imageInfo.SourcePath, mountPath, imageInfo.Index, readOnly: !ReadWrite.IsPresent);
                 var mountDuration = DateTime.UtcNow - mountStartTime;
 
                 mountedImage.Status = MountStatus.Mounted;

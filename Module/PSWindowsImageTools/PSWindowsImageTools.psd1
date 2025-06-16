@@ -32,6 +32,15 @@
     # Minimum version of the common language runtime (CLR) required by this module
     CLRVersion = '4.0'
 
+    # Assemblies that must be loaded prior to importing this module
+    RequiredAssemblies = @(
+        'bin\PSWindowsImageTools.dll',
+        'bin\Microsoft.Dism.dll',
+        'bin\Registry.dll',
+        'bin\System.Data.SQLite.dll',
+        'bin\Newtonsoft.Json.dll'
+    )
+
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
     FunctionsToExport = @()
 

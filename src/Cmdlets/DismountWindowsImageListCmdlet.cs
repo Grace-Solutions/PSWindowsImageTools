@@ -23,11 +23,11 @@ namespace PSWindowsImageTools.Cmdlets
         public MountedWindowsImage[] MountedImages { get; set; } = Array.Empty<MountedWindowsImage>();
 
         /// <summary>
-        /// Mount paths to dismount
+        /// Mount directories to dismount
         /// </summary>
         [Parameter(Mandatory = true, Position = 0, ParameterSetName = "ByPath")]
         [ValidateNotNullOrEmpty]
-        public string[] Path { get; set; } = Array.Empty<string>();
+        public DirectoryInfo[] Path { get; set; } = Array.Empty<DirectoryInfo>();
 
         /// <summary>
         /// Save changes made to the mounted images (default is discard)
@@ -60,15 +60,15 @@ namespace PSWindowsImageTools.Cmdlets
             }
             else if (ParameterSetName == "ByPath")
             {
-                // Convert paths to MountedWindowsImage objects
-                foreach (var path in Path)
+                // Convert directory paths to MountedWindowsImage objects
+                foreach (var directory in Path)
                 {
                     var mountedImage = new MountedWindowsImage
                     {
                         MountId = Guid.NewGuid().ToString(),
-                        MountPath = path,
+                        MountPath = directory,
                         Status = MountStatus.Mounted,
-                        ImageName = $"Image at {path}",
+                        ImageName = $"Image at {directory.FullName}",
                         MountedAt = DateTime.UtcNow
                     };
                     _allMountedImages.Add(mountedImage);
@@ -92,7 +92,7 @@ namespace PSWindowsImageTools.Cmdlets
 
             try
             {
-                LoggingService.LogOperationStart(this, "DismountImageList", $"Dismounting {_allMountedImages.Count} images");
+
 
                 // Show initial progress
                 LoggingService.WriteProgress(this, "Dismounting Windows Images", 
@@ -107,18 +107,18 @@ namespace PSWindowsImageTools.Cmdlets
                     
                     LoggingService.WriteProgress(this, "Dismounting Windows Images", 
                         $"[{i + 1} of {_allMountedImages.Count}] - {mountedImage.ImageName}", 
-                        $"Dismounting from {mountedImage.MountPath} ({progress}%)", progress);
+                        $"Dismounting from {mountedImage.MountPath.FullName} ({progress}%)", progress);
 
                     try
                     {
                         var result = DismountSingleImage(mountedImage, i + 1, _allMountedImages.Count);
                         results.Add(result);
                         
-                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully dismounted: {mountedImage.MountPath}");
+                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully dismounted: {mountedImage.MountPath.FullName}");
                     }
                     catch (Exception ex)
                     {
-                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to dismount {mountedImage.MountPath}: {ex.Message}", ex);
+                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to dismount {mountedImage.MountPath.FullName}: {ex.Message}", ex);
                         
                         // Update status to failed
                         mountedImage.Status = MountStatus.Failed;
@@ -173,24 +173,24 @@ namespace PSWindowsImageTools.Cmdlets
             try
             {
                 // Validate mount path exists
-                if (!Directory.Exists(mountedImage.MountPath))
+                if (!mountedImage.MountPath.Exists)
                 {
-                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Mount path does not exist: {mountedImage.MountPath}");
+                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Mount path does not exist: {mountedImage.MountPath.FullName}");
                     result.Status = MountStatus.Unmounted;
                     return result;
                 }
 
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath}");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath.FullName}");
                 LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Save changes: {(Save.IsPresent ? "Yes" : "No")}");
 
                 // Report dismount progress - start
                 LoggingService.WriteProgress(this, "Dismounting Windows Images",
                     $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
-                    $"Initiating dismount operation from {mountedImage.MountPath}...",
+                    $"Initiating dismount operation from {mountedImage.MountPath.FullName}...",
                     (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
 
                 var dismountStartTime = DateTime.UtcNow;
-                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath, Save.IsPresent);
+                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath.FullName, Save.IsPresent);
                 var dismountDuration = DateTime.UtcNow - dismountStartTime;
 
                 result.Status = MountStatus.Unmounted;
@@ -208,15 +208,15 @@ namespace PSWindowsImageTools.Cmdlets
                 {
                     try
                     {
-                        if (Directory.Exists(mountedImage.MountPath))
+                        if (mountedImage.MountPath.Exists)
                         {
-                            Directory.Delete(mountedImage.MountPath, true);
-                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Removed mount directory: {mountedImage.MountPath}");
+                            mountedImage.MountPath.Delete(true);
+                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Removed mount directory: {mountedImage.MountPath.FullName}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Failed to remove mount directory {mountedImage.MountPath}: {ex.Message}");
+                        LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Failed to remove mount directory {mountedImage.MountPath.FullName}: {ex.Message}");
                     }
                 }
                 
@@ -236,10 +236,10 @@ namespace PSWindowsImageTools.Cmdlets
                     {
                         LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force flag specified, attempting cleanup");
                         
-                        if (Directory.Exists(mountedImage.MountPath))
+                        if (mountedImage.MountPath.Exists)
                         {
-                            Directory.Delete(mountedImage.MountPath, true);
-                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force removed mount directory: {mountedImage.MountPath}");
+                            mountedImage.MountPath.Delete(true);
+                            LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force removed mount directory: {mountedImage.MountPath.FullName}");
                         }
                         
                         result.Status = MountStatus.Unmounted;
