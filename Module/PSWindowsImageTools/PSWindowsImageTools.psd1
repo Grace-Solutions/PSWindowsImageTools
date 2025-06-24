@@ -3,7 +3,7 @@
     RootModule = 'bin\PSWindowsImageTools.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.06.10.1755'
+    ModuleVersion = '2025.06.18.1'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -21,7 +21,7 @@
     Copyright = 'Copyright (c) 2025 PSWindowsImageTools. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'PowerShell module for Windows image customization, providing tools for working with ISO, WIM, and ESD files, applying customizations through recipes, and managing Windows Update integration.'
+    Description = 'PowerShell module for Windows image customization and Windows Update management. Provides comprehensive tools for working with ISO, WIM, and ESD files, native DISM operations, Windows Update catalog integration, and database-driven workflow management.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -38,7 +38,8 @@
         'bin\Microsoft.Dism.dll',
         'bin\Registry.dll',
         'bin\System.Data.SQLite.dll',
-        'bin\Newtonsoft.Json.dll'
+        'bin\Newtonsoft.Json.dll',
+        'bin\HtmlAgilityPack.dll'
     )
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
@@ -46,17 +47,24 @@
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
     CmdletsToExport = @(
-        'Set-WindowsImageDatabaseConfiguration',
-        'New-WindowsImageDatabase',
-        'Clear-WindowsImageDatabase',
+        # Core Windows Image Management
         'Get-WindowsImageList',
         'Mount-WindowsImageList',
         'Dismount-WindowsImageList',
+
+        # ESD/ISO Conversion
         'Convert-ESDToWindowsImage',
-        'New-WindowsImageBuildRecipe',
-        'New-WindowsImageBuild',
-        'Search-WindowsImageUpdateCatalog',
-        'Invoke-WindowsImageDatabaseQuery'
+
+        # Windows Update Workflow
+        'Search-WindowsUpdateCatalog',
+        'Save-WindowsUpdateCatalogResult',
+        'Install-WindowsImageUpdate',
+
+        # Database Operations
+        'Search-WindowsImageDatabase',
+        'Set-WindowsImageDatabaseConfiguration',
+        'New-WindowsImageDatabase',
+        'Clear-WindowsImageDatabase'
     )
 
     # Variables to export from this module
@@ -69,16 +77,42 @@
     PrivateData = @{
         PSData = @{
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags = @('Windows', 'Image', 'WIM', 'ESD', 'ISO', 'DISM', 'Customization', 'Updates')
+            Tags = @('Windows', 'Image', 'WIM', 'ESD', 'ISO', 'DISM', 'Customization', 'Updates', 'WindowsUpdate', 'Catalog', 'Database', 'PowerShell')
 
             # A URL to the license for this module.
             LicenseUri = 'https://www.gnu.org/licenses/gpl-3.0.html'
 
             # A URL to the main website for this project.
-            ProjectUri = 'https://github.com/PSWindowsImageTools/PSWindowsImageTools'
+            ProjectUri = 'https://github.com/Grace-Solutions/PSWindowsUpdateTools'
 
             # ReleaseNotes of this module
-            ReleaseNotes = 'Initial release of PSWindowsImageTools module with comprehensive Windows image customization capabilities.'
+            ReleaseNotes = @'
+Major architectural improvements and new Windows Update workflow:
+
+NEW FEATURES:
+• Complete Windows Update architecture redesign with proper object models
+• Search-WindowsUpdateCatalog: Search Microsoft Update Catalog with filters
+• Save-WindowsUpdateCatalogResult: Download catalog results to packages
+• Search-WindowsImageDatabase: Search local database for cached updates
+• Install-WindowsImageUpdate: Install packages on mounted images (redesigned)
+• Full pipeline support: Search → Download → Install workflow
+• Database integration with ObjectType queries (Updates, Images, Operations, Inventory)
+
+IMPROVEMENTS:
+• Migrated to .NET Standard 2.0 for better PowerShell compatibility
+• Reduced bin folder from 200+ files to 8 essential DLLs
+• Fixed all build warnings and security vulnerabilities
+• Consistent InputObject parameter naming for pipeline support
+• All path parameters use DirectoryInfo/FileInfo types
+• Removed shell-outs, pure DISM API usage throughout
+• Enhanced logging with human-readable timestamps and durations
+
+ARCHITECTURE:
+• Clean separation between catalog results and downloaded packages
+• Type-safe object models with proper PowerShell patterns
+• Offline database searches complement online catalog searches
+• Comprehensive examples and workflow documentation
+'@
         }
     }
 }

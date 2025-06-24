@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
     <AssemblyName>PSWindowsImageTools</AssemblyName>
@@ -14,23 +14,49 @@
     <Copyright>Copyright © 2025</Copyright>
     <OutputPath>..\Artifacts\bin\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Only copy essential dependencies, exclude OS-provided libraries -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <CopyLocalRuntimeTargetAssets>false</CopyLocalRuntimeTargetAssets>
+    <ExcludeAssets>build;buildMultitargeting;buildTransitive;analyzers</ExcludeAssets>
     <UseWindowsForms>false</UseWindowsForms>
     <UseWPF>false</UseWPF>
     <SQLiteNetStandardRuntime>true</SQLiteNetStandardRuntime>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+    <!-- Exclude debug and configuration files from output -->
+    <DebugType>none</DebugType>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- PowerShell dependencies - provided by host, don't copy -->
+    <PackageReference Include="PowerShellStandard.Library" Version="5.1.1">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+
+    <!-- Essential dependencies - these will be copied to bin -->
     <PackageReference Include="HtmlAgilityPack" Version="1.12.1" />
-    <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" />
     <PackageReference Include="Registry" Version="1.5.0" />
-    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
     <PackageReference Include="Microsoft.Dism" Version="3.3.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="System.Security.Cryptography.Algorithms" Version="4.3.1" />
-    <PackageReference Include="System.Text.Json" Version="9.0.0" />
-    <PackageReference Include="System.Net.Http" Version="4.3.4" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
+
+    <!-- System libraries - provided by OS/runtime, don't copy -->
+    <PackageReference Include="System.Security.Cryptography.Algorithms" Version="4.3.1">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+
+    <PackageReference Include="System.Text.Json" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+
+    <PackageReference Include="System.Net.Http" Version="4.3.4">
+      <PrivateAssets>all</PrivateAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -38,5 +64,60 @@
     <Folder Include="Services\" />
     <Folder Include="Models\" />
   </ItemGroup>
+
+  <!-- Custom target to clean up unwanted files after build -->
+  <Target Name="CleanupBinFolder" AfterTargets="Build">
+    <ItemGroup>
+      <!-- Remove reference assemblies folder -->
+      <RefFolderToDelete Include="$(OutputPath)ref\**\*" />
+      <!-- Remove runtime folders -->
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)win-x64\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)x64\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)x86\**\*" />
+
+      <!-- Remove PowerShell assemblies that should be provided by host -->
+      <PowerShellAssembliesToDelete Include="$(OutputPath)System.Management.Automation.dll" />
+      <PowerShellAssembliesToDelete Include="$(OutputPath)Microsoft.PowerShell.*.dll" />
+
+      <!-- Remove .NET runtime assemblies (keep only essential SQLite) -->
+      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Data.SQLite.dll;$(OutputPath)System.Data.SQLite.EF6.dll;$(OutputPath)System.Data.SQLite.Linq.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.CSharp.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.VisualBasic.*.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Bcl.*.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Data.*.dll" />
+
+      <!-- Remove Entity Framework (not needed) -->
+      <EntityFrameworkToDelete Include="$(OutputPath)EntityFramework*.dll" />
+
+      <!-- Remove additional unnecessary libraries -->
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)Serilog.dll" />
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)SQLitePCLRaw.*.dll" />
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)Joveler.DynLoader.dll" />
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)ManagedWimLib.dll" />
+
+      <!-- Remove debug and configuration files -->
+      <ConfigFilesToDelete Include="$(OutputPath)*.pdb" />
+      <ConfigFilesToDelete Include="$(OutputPath)*.deps.json" />
+      <ConfigFilesToDelete Include="$(OutputPath)*.runtimeconfig.json" />
+    </ItemGroup>
+
+    <Delete Files="@(RefFolderToDelete)" />
+    <Delete Files="@(RuntimeFolderToDelete)" />
+    <Delete Files="@(PowerShellAssembliesToDelete)" />
+    <Delete Files="@(SystemAssembliesToDelete)" />
+    <Delete Files="@(EntityFrameworkToDelete)" />
+    <Delete Files="@(UnnecessaryLibrariesToDelete)" />
+    <Delete Files="@(ConfigFilesToDelete)" />
+
+    <RemoveDir Directories="$(OutputPath)ref" />
+    <RemoveDir Directories="$(OutputPath)runtimes" />
+    <RemoveDir Directories="$(OutputPath)win-x64" />
+    <RemoveDir Directories="$(OutputPath)x64" />
+    <RemoveDir Directories="$(OutputPath)x86" />
+
+    <Message Text="Cleaned up bin folder - removed OS-provided libraries and debug files" Importance="high" />
+  </Target>
 
 </Project>

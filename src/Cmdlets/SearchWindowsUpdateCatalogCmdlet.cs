@@ -60,6 +60,12 @@ namespace PSWindowsImageTools.Cmdlets
         [Parameter(Mandatory = false)]
         public string? Product { get; set; }
 
+        /// <summary>
+        /// Enable debug mode with detailed HTTP logging and global variables
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter Debug { get; set; }
+
         private readonly List<string> _allQueries = new List<string>();
         private const string ComponentName = "WindowsUpdateCatalog";
 
@@ -177,7 +183,7 @@ namespace PSWindowsImageTools.Cmdlets
                 Product = Product
             };
 
-            var searchResult = catalogService.SearchUpdates(criteria, this);
+            var searchResult = catalogService.SearchUpdates(criteria, IncludeDownloadUrls.IsPresent, Debug.IsPresent, this);
 
             var newResults = searchResult.Updates.Select(ConvertToNewModel).ToList();
 
