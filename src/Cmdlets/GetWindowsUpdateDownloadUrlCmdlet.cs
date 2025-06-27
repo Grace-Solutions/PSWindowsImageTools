@@ -101,7 +101,7 @@ namespace PSWindowsImageTools.Cmdlets
                 try
                 {
                     LoggingService.WriteVerbose(this, $"Getting download URLs for: {result.Title}");
-                    
+
                     var downloadUrls = catalogService.GetDownloadUrls(result.UpdateId, this);
                     result.DownloadUrls = downloadUrls.ToArray();
                     result.HasDownloadUrls = downloadUrls.Any();
@@ -111,7 +111,7 @@ namespace PSWindowsImageTools.Cmdlets
                 catch (Exception ex)
                 {
                     LoggingService.WriteWarning(this, $"Failed to get download URLs for {result.Title}: {ex.Message}");
-                    result.DownloadUrls = Array.Empty<string>();
+                    result.DownloadUrls = Array.Empty<Uri>();
                     result.HasDownloadUrls = false;
                 }
             }

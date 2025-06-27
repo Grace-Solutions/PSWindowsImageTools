@@ -26,7 +26,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Local file where the update package is stored
         /// </summary>
-        public FileInfo LocalFile { get; set; } = new FileInfo(string.Empty);
+        public FileInfo LocalFile { get; set; } = null!;
 
         /// <summary>
         /// Whether the package has been successfully downloaded

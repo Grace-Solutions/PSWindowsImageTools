@@ -264,7 +264,7 @@ namespace PSWindowsImageTools.Cmdlets
                 Classification = package.SourceCatalogResult.Classification,
                 LastUpdated = package.SourceCatalogResult.LastModified,
                 SizeInBytes = package.SourceCatalogResult.Size,
-                DownloadUrls = package.SourceCatalogResult.DownloadUrls.ToList(),
+                DownloadUrls = package.SourceCatalogResult.DownloadUrls.Select(uri => uri.OriginalString).ToList(),
                 Architecture = package.SourceCatalogResult.Architecture,
                 LocalFilePath = package.LocalFile.FullName
             };

@@ -51,7 +51,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Download URLs for the update package
         /// </summary>
-        public string[] DownloadUrls { get; set; } = Array.Empty<string>();
+        public Uri[] DownloadUrls { get; set; } = Array.Empty<Uri>();
 
         /// <summary>
         /// Target architecture (e.g., "AMD64", "x86", "ARM64")

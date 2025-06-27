@@ -32,7 +32,7 @@ namespace PSWindowsImageTools.Cmdlets
         /// Architecture filter
         /// </summary>
         [Parameter(Mandatory = false)]
-        [ValidateSet("x86", "AMD64", "ARM64")]
+        [ValidateSet("x86", "x64", "ARM64")]
         public string? Architecture { get; set; }
 
         /// <summary>
@@ -55,6 +55,13 @@ namespace PSWindowsImageTools.Cmdlets
         /// </summary>
         [Parameter(Mandatory = false)]
         public string? Product { get; set; }
+
+        /// <summary>
+        /// Page number for pagination (default: 1)
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        [ValidateRange(1, int.MaxValue)]
+        public int Page { get; set; } = 1;
 
         /// <summary>
         /// Enable debug mode with detailed HTTP logging and global variables
@@ -99,7 +106,11 @@ namespace PSWindowsImageTools.Cmdlets
                 var operationStartTime = LoggingService.LogOperationStartWithTimestamp(this, ComponentName,
                     "Search Windows Update Catalog", $"{_allQueries.Count} queries");
 
-                LoggingService.WriteVerbose(this, $"Searching catalog with {_allQueries.Count} queries");
+                // Only show query count if multiple queries
+                if (_allQueries.Count > 1)
+                {
+                    LoggingService.WriteVerbose(this, $"Searching catalog with {_allQueries.Count} queries");
+                }
 
                 var allResults = new List<WindowsUpdateCatalogResult>();
 
@@ -107,18 +118,26 @@ namespace PSWindowsImageTools.Cmdlets
                 for (int i = 0; i < _allQueries.Count; i++)
                 {
                     var query = _allQueries[i];
-                    var progress = (int)((double)(i + 1) / _allQueries.Count * 100);
 
-                    LoggingService.WriteProgress(this, "Searching Windows Update Catalog",
-                        $"[{i + 1} of {_allQueries.Count}] - {query}",
-                        $"Searching for '{query}' ({progress}%)", progress);
+                    // Only show progress for multiple queries
+                    if (_allQueries.Count > 1)
+                    {
+                        var progress = (int)((double)(i + 1) / _allQueries.Count * 100);
+                        LoggingService.WriteProgress(this, "Searching Windows Update Catalog",
+                            $"[{i + 1} of {_allQueries.Count}] - {query}",
+                            $"Searching for '{query}' ({progress}%)", progress);
+                    }
 
                     try
                     {
                         var results = SearchSingleQuery(query);
                         allResults.AddRange(results);
 
-                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allQueries.Count}] - Found {results.Count} results for '{query}'");
+                        // Only show individual results for multiple queries
+                        if (_allQueries.Count > 1)
+                        {
+                            LoggingService.WriteVerbose(this, $"[{i + 1} of {_allQueries.Count}] - Found {results.Count} results for '{query}'");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -174,6 +193,7 @@ namespace PSWindowsImageTools.Cmdlets
             {
                 Query = query,
                 MaxResults = MaxResults,
+                Page = Page,
                 Architecture = Architecture,
                 Classification = Classification,
                 Product = Product
@@ -201,7 +221,8 @@ namespace PSWindowsImageTools.Cmdlets
                 Classification = oldUpdate.Classification,
                 LastModified = oldUpdate.LastUpdated,
                 Size = oldUpdate.SizeInBytes,
-                DownloadUrls = oldUpdate.DownloadUrls?.ToArray() ?? Array.Empty<string>(),
+                DownloadUrls = oldUpdate.DownloadUrls?.Where(url => Uri.IsWellFormedUriString(url, UriKind.Absolute))
+                    .Select(url => new Uri(url)).ToArray() ?? Array.Empty<Uri>(),
                 Architecture = oldUpdate.Architecture,
                 Languages = Array.Empty<string>(), // Will be populated later
                 HasDownloadUrls = oldUpdate.DownloadUrls?.Any() == true
@@ -217,22 +238,30 @@ namespace PSWindowsImageTools.Cmdlets
         {
             var filtered = results.AsEnumerable();
 
+            var filtersApplied = new List<string>();
+
             if (!string.IsNullOrEmpty(Architecture))
             {
                 filtered = filtered.Where(r => r.Architecture.Equals(Architecture, StringComparison.OrdinalIgnoreCase));
-                LoggingService.WriteVerbose(this, $"Applied architecture filter '{Architecture}'");
+                filtersApplied.Add($"Architecture: {Architecture}");
             }
 
             if (!string.IsNullOrEmpty(Classification))
             {
                 filtered = filtered.Where(r => r.Classification.IndexOf(Classification, StringComparison.OrdinalIgnoreCase) >= 0);
-                LoggingService.WriteVerbose(this, $"Applied classification filter '{Classification}'");
+                filtersApplied.Add($"Classification: {Classification}");
             }
 
             if (!string.IsNullOrEmpty(Product))
             {
                 filtered = filtered.Where(r => r.Products.Any(p => p.IndexOf(Product, StringComparison.OrdinalIgnoreCase) >= 0));
-                LoggingService.WriteVerbose(this, $"Applied product filter '{Product}'");
+                filtersApplied.Add($"Product: {Product}");
+            }
+
+            // Only log filters if any were applied
+            if (filtersApplied.Count > 0)
+            {
+                LoggingService.WriteVerbose(this, $"Applied filters: {string.Join(", ", filtersApplied)}");
             }
 
             return filtered.ToList();

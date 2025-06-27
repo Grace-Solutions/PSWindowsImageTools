@@ -14,9 +14,9 @@
     <Copyright>Copyright © 2025</Copyright>
     <OutputPath>..\Artifacts\bin\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <!-- Only copy essential dependencies, exclude OS-provided libraries -->
-    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-    <CopyLocalRuntimeTargetAssets>false</CopyLocalRuntimeTargetAssets>
+    <!-- Copy essential dependencies including SQLite native libraries -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <CopyLocalRuntimeTargetAssets>true</CopyLocalRuntimeTargetAssets>
     <ExcludeAssets>build;buildMultitargeting;buildTransitive;analyzers</ExcludeAssets>
     <UseWindowsForms>false</UseWindowsForms>
     <UseWPF>false</UseWPF>
@@ -40,7 +40,10 @@
     <PackageReference Include="Registry" Version="1.5.0" />
     <PackageReference Include="Microsoft.Dism" Version="3.3.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.118">
+      <IncludeAssets>all</IncludeAssets>
+      <PrivateAssets>none</PrivateAssets>
+    </PackageReference>
 
     <!-- System libraries - provided by OS/runtime, don't copy -->
     <PackageReference Include="System.Security.Cryptography.Algorithms" Version="4.3.1">
@@ -70,11 +73,15 @@
     <ItemGroup>
       <!-- Remove reference assemblies folder -->
       <RefFolderToDelete Include="$(OutputPath)ref\**\*" />
-      <!-- Remove runtime folders -->
-      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\**\*" />
-      <RuntimeFolderToDelete Include="$(OutputPath)win-x64\**\*" />
-      <RuntimeFolderToDelete Include="$(OutputPath)x64\**\*" />
-      <RuntimeFolderToDelete Include="$(OutputPath)x86\**\*" />
+      <!-- Remove non-Windows runtime folders, keep only win-x64 and win-x86 for SQLite -->
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\debian*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\fedora*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\linux*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\opensuse*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\osx*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\rhel*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\ubuntu*\**\*" />
+      <RuntimeFolderToDelete Include="$(OutputPath)runtimes\win\**\*" />
 
       <!-- Remove PowerShell assemblies that should be provided by host -->
       <PowerShellAssembliesToDelete Include="$(OutputPath)System.Management.Automation.dll" />
@@ -91,7 +98,7 @@
       <!-- Remove Entity Framework (not needed) -->
       <EntityFrameworkToDelete Include="$(OutputPath)EntityFramework*.dll" />
 
-      <!-- Remove additional unnecessary libraries -->
+      <!-- Remove additional unnecessary libraries but keep SQLite.Interop.dll -->
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)Serilog.dll" />
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)SQLitePCLRaw.*.dll" />
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)Joveler.DynLoader.dll" />
@@ -112,10 +119,20 @@
     <Delete Files="@(ConfigFilesToDelete)" />
 
     <RemoveDir Directories="$(OutputPath)ref" />
-    <RemoveDir Directories="$(OutputPath)runtimes" />
-    <RemoveDir Directories="$(OutputPath)win-x64" />
-    <RemoveDir Directories="$(OutputPath)x64" />
-    <RemoveDir Directories="$(OutputPath)x86" />
+    <!-- Remove non-Windows runtime directories -->
+    <RemoveDir Directories="$(OutputPath)runtimes\debian.8-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\fedora.23-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\fedora.24-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\linux-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\opensuse.13.2-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\opensuse.42.1-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\osx-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\osx.10.10-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\rhel.7-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\ubuntu.14.04-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\ubuntu.16.04-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\ubuntu.16.10-x64" />
+    <RemoveDir Directories="$(OutputPath)runtimes\win" />
 
     <Message Text="Cleaned up bin folder - removed OS-provided libraries and debug files" Importance="high" />
   </Target>

@@ -124,12 +124,12 @@ namespace PSWindowsImageTools.Services
 
             var session = new CatalogSession();
             var searchStartTime = LoggingService.LogOperationStartWithTimestamp(cmdlet, ServiceName,
-                "Windows Update Catalog Search", $"Query: '{criteria.Query}', Page: {criteria.Page}");
+                "Windows Update Catalog Search", $"Query: '{criteria.Query}'");
 
             try
             {
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    $"Searching Windows Update Catalog: '{criteria.Query}' (Page {criteria.Page})");
+                    $"Searching Windows Update Catalog: '{criteria.Query}'");
 
                 // Step 1: Initial search request
                 var searchUrl = BuildSearchUrl(criteria);
@@ -454,10 +454,10 @@ namespace PSWindowsImageTools.Services
         /// </summary>
         /// <param name="updateId">Update ID</param>
         /// <param name="cmdlet">PowerShell cmdlet for logging</param>
-        /// <returns>List of download URLs</returns>
-        public List<string> GetDownloadUrls(string updateId, PSCmdlet? cmdlet = null)
+        /// <returns>List of download URLs as properly formed Uri objects</returns>
+        public List<Uri> GetDownloadUrls(string updateId, PSCmdlet? cmdlet = null)
         {
-            var downloadUrls = new List<string>();
+            var downloadUrls = new List<Uri>();
 
             try
             {
@@ -630,7 +630,8 @@ namespace PSWindowsImageTools.Services
                 {
                     if (!string.IsNullOrEmpty(update.UpdateId))
                     {
-                        update.DownloadUrls = GetDownloadUrls(update.UpdateId, cmdlet);
+                        var uris = GetDownloadUrls(update.UpdateId, cmdlet);
+                        update.DownloadUrls = uris.Select(uri => uri.OriginalString).ToList();
                     }
                 }
                 catch (Exception ex)
@@ -807,9 +808,9 @@ namespace PSWindowsImageTools.Services
         /// Parses download URLs from the download dialog HTML
         /// Based on Windows Update Catalog specification - extracts URLs from JavaScript downloadInformation variable
         /// </summary>
-        private static List<string> ParseDownloadUrls(string html, PSCmdlet? cmdlet)
+        private static List<Uri> ParseDownloadUrls(string html, PSCmdlet? cmdlet)
         {
-            var urls = new List<string>();
+            var urls = new List<Uri>();
 
             try
             {
@@ -821,7 +822,7 @@ namespace PSWindowsImageTools.Services
                 {
                     if (match.Success && Uri.IsWellFormedUriString(match.Groups[1].Value, UriKind.Absolute))
                     {
-                        urls.Add(match.Groups[1].Value);
+                        urls.Add(new Uri(match.Groups[1].Value));
                     }
                 }
 
@@ -836,7 +837,7 @@ namespace PSWindowsImageTools.Services
                     {
                         if (match.Success && Uri.IsWellFormedUriString(match.Value, UriKind.Absolute))
                         {
-                            urls.Add(match.Value);
+                            urls.Add(new Uri(match.Value));
                         }
                     }
                 }
@@ -855,13 +856,13 @@ namespace PSWindowsImageTools.Services
                             var href = link.GetAttributeValue("href", "");
                             if (!string.IsNullOrEmpty(href) && Uri.IsWellFormedUriString(href, UriKind.Absolute))
                             {
-                                urls.Add(href);
+                                urls.Add(new Uri(href));
                             }
                         }
                     }
                 }
 
-                // Remove duplicates
+                // Remove duplicates based on absolute URI
                 urls = urls.Distinct().ToList();
             }
             catch (Exception ex)

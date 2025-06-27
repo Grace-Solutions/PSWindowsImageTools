@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
+using System.Net.Http;
+using System.Threading;
 using PSWindowsImageTools.Models;
 using PSWindowsImageTools.Services;
 
@@ -53,6 +55,12 @@ namespace PSWindowsImageTools.Cmdlets
         /// </summary>
         [Parameter(Mandatory = false)]
         public SwitchParameter SkipDatabase { get; set; }
+
+        /// <summary>
+        /// Enable resume capability for failed downloads
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter Resume { get; set; }
 
         private readonly List<WindowsUpdateCatalogResult> _allCatalogResults = new List<WindowsUpdateCatalogResult>();
         private const string ComponentName = "WindowsUpdateDownload";
@@ -136,9 +144,16 @@ namespace PSWindowsImageTools.Cmdlets
 
                 var successCount = packages.Count(p => p.IsDownloaded);
                 var failureCount = packages.Count - successCount;
+                var totalCount = downloadableResults.Count;
+
+                var successPercentage = totalCount > 0 ? Math.Round((double)successCount / totalCount * 100, 1) : 0;
+                var failurePercentage = totalCount > 0 ? Math.Round((double)failureCount / totalCount * 100, 1) : 0;
 
                 LoggingService.LogOperationCompleteWithTimestamp(this, ComponentName, "Download Windows Updates", operationStartTime,
-                    $"Downloaded {successCount} of {downloadableResults.Count} packages. {failureCount} failed.");
+                    $"Completed {totalCount} download(s)");
+
+                LoggingService.WriteVerbose(this, $"Succeeded: {successCount} of {totalCount} ({successPercentage}%)");
+                LoggingService.WriteVerbose(this, $"Failed: {failureCount} of {totalCount} ({failurePercentage}%)");
 
                 if (failureCount > 0)
                 {
@@ -199,8 +214,15 @@ namespace PSWindowsImageTools.Cmdlets
 
             try
             {
+                // Ensure destination directory exists
+                if (!DestinationPath.Exists)
+                {
+                    DestinationPath.Create();
+                    LoggingService.WriteVerbose(this, $"Created destination directory: {DestinationPath.FullName}");
+                }
+
                 // Generate filename
-                var fileName = NetworkService.GetSuggestedFilename(catalogResult.DownloadUrls.First()) ?? $"{catalogResult.KBNumber}.cab";
+                var fileName = NetworkService.GetSuggestedFilename(catalogResult.DownloadUrls.First().OriginalString) ?? $"{catalogResult.KBNumber}.cab";
                 var filePath = new FileInfo(Path.Combine(DestinationPath.FullName, fileName));
 
                 // Check if file already exists
@@ -221,21 +243,38 @@ namespace PSWindowsImageTools.Cmdlets
                     return package;
                 }
 
-                // Download the package
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Downloading {catalogResult.KBNumber} from {catalogResult.DownloadUrls.First()}");
+                // Download the package with progress tracking
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Downloading {catalogResult.KBNumber} from {catalogResult.DownloadUrls.First().OriginalString}");
 
                 var downloadUrl = catalogResult.DownloadUrls.First();
-                var downloadResult = NetworkService.DownloadFile(downloadUrl, filePath.FullName, this, null);
+
+                // Create progress callback for this specific download
+                var progressCallback = ProgressService.CreateDownloadProgressCallback(
+                    this,
+                    "Downloading Windows Updates",
+                    catalogResult.KBNumber,
+                    currentIndex,
+                    totalCount);
+
+                var downloadResult = DownloadWithResume(downloadUrl, filePath, progressCallback);
 
                 if (downloadResult)
                 {
+                    // Refresh FileInfo to ensure we have the latest file information
+                    filePath.Refresh();
+
+                    // Small delay to ensure file is fully written
+                    if (!filePath.Exists)
+                    {
+                        Thread.Sleep(100);
+                        filePath.Refresh();
+                    }
+
                     package.LocalFile = filePath;
                     package.IsDownloaded = true;
-                    package.FileSize = filePath.Length;
+                    package.FileSize = filePath.Exists ? filePath.Length : 0;
                     package.DownloadedAt = DateTime.UtcNow;
-                    package.DownloadUrl = downloadUrl;
-
-                    LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Successfully downloaded {catalogResult.KBNumber} to {filePath.FullName}");
+                    package.DownloadUrl = downloadUrl.OriginalString;
 
                     // Verify file if requested
                     if (Verify.IsPresent)
@@ -269,7 +308,7 @@ namespace PSWindowsImageTools.Cmdlets
                 KBNumber = catalogResult.KBNumber,
                 Title = catalogResult.Title,
                 SourceCatalogResult = catalogResult,
-                LocalFile = new FileInfo(string.Empty),
+                LocalFile = null!, // Will be set during download
                 IsDownloaded = false,
                 IsVerified = false
             };
@@ -340,10 +379,133 @@ namespace PSWindowsImageTools.Cmdlets
                 Classification = package.SourceCatalogResult.Classification,
                 LastUpdated = package.SourceCatalogResult.LastModified,
                 SizeInBytes = package.SourceCatalogResult.Size,
-                DownloadUrls = package.SourceCatalogResult.DownloadUrls.ToList(),
+                DownloadUrls = package.SourceCatalogResult.DownloadUrls.Select(uri => uri.OriginalString).ToList(),
                 Architecture = package.SourceCatalogResult.Architecture,
                 LocalFilePath = package.LocalFile.FullName
             };
+        }
+
+        /// <summary>
+        /// Formats a byte size into the most appropriate unit (B, KB, MB, GB, TB)
+        /// </summary>
+        private static string FormatSize(long bytes)
+        {
+            if (bytes == 0) return "0 B";
+
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            int unitIndex = 0;
+            double size = bytes;
+
+            while (size >= 1024 && unitIndex < units.Length - 1)
+            {
+                size /= 1024;
+                unitIndex++;
+            }
+
+            return unitIndex == 0
+                ? $"{size:F0} {units[unitIndex]}"
+                : $"{size:F2} {units[unitIndex]}";
+        }
+
+        /// <summary>
+        /// Downloads a file with resume capability and progress tracking
+        /// </summary>
+        private bool DownloadWithResume(Uri downloadUrl, FileInfo destinationFile, Action<int, string> progressCallback)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(destinationFile?.FullName))
+                {
+                    throw new ArgumentException("Destination file path is null or empty", nameof(destinationFile));
+                }
+
+                // Check if partial file exists and resume is enabled
+                long startPosition = 0;
+                if (Resume.IsPresent && destinationFile.Exists)
+                {
+                    startPosition = destinationFile.Length;
+                    LoggingService.WriteVerbose(this, $"Resuming download from position: {startPosition:N0} bytes");
+                }
+
+                using var httpClient = new HttpClient();
+                var handler = new HttpClientHandler()
+                {
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true,
+                    UseDefaultCredentials = true
+                };
+
+                using var clientWithHandler = new HttpClient(handler);
+
+                // Create request with range header for resume
+                var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+                if (startPosition > 0)
+                {
+                    request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(startPosition, null);
+                }
+
+                using var response = clientWithHandler.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).Result;
+
+                // Check if server supports range requests
+                if (startPosition > 0 && response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+                {
+                    LoggingService.WriteWarning(this, "Server doesn't support resume, starting fresh download");
+                    startPosition = 0;
+                    destinationFile.Delete();
+                }
+                else
+                {
+                    response.EnsureSuccessStatusCode();
+                }
+
+                var totalBytes = (response.Content.Headers.ContentLength ?? 0) + startPosition;
+                var sizeMessage = startPosition > 0
+                    ? $"Download size: {FormatSize(totalBytes)} (resuming from {FormatSize(startPosition)})"
+                    : $"Download size: {FormatSize(totalBytes)}";
+                LoggingService.WriteVerbose(this, sizeMessage);
+
+                using var contentStream = response.Content.ReadAsStreamAsync().Result;
+                using var fileStream = new FileStream(destinationFile.FullName,
+                    startPosition > 0 ? FileMode.Append : FileMode.Create,
+                    FileAccess.Write, FileShare.None, 8192, false);
+
+                var buffer = new byte[8192];
+                long totalBytesRead = startPosition;
+                int bytesRead;
+                var lastProgressReport = 0;
+
+                while ((bytesRead = contentStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    fileStream.Write(buffer, 0, bytesRead);
+                    totalBytesRead += bytesRead;
+
+                    if (totalBytes > 0)
+                    {
+                        var progressPercentage = (int)((totalBytesRead * 100) / totalBytes);
+
+                        // Report progress every 1% for better user experience
+                        if (progressPercentage > lastProgressReport)
+                        {
+                            lastProgressReport = progressPercentage;
+                            var status = $"Downloaded {FormatSize(totalBytesRead)} of {FormatSize(totalBytes)} ({progressPercentage}%)";
+                            progressCallback?.Invoke(progressPercentage, status);
+                        }
+                    }
+                    else
+                    {
+                        // Unknown size, report bytes downloaded
+                        var status = $"Downloaded {FormatSize(totalBytesRead)}";
+                        progressCallback?.Invoke(-1, status);
+                    }
+                }
+
+                LoggingService.WriteVerbose(this, $"Download completed: {FormatSize(totalBytesRead)}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(this, ComponentName, $"Download failed: {ex.Message}", ex);
+                return false;
+            }
         }
     }
 }
