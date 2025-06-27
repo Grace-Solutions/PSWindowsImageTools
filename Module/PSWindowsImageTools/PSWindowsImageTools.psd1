@@ -57,6 +57,8 @@
 
         # Windows Update Workflow
         'Search-WindowsUpdateCatalog',
+        'Get-WindowsUpdateDownloadUrl',
+        'Get-PatchTuesday',
         'Save-WindowsUpdateCatalogResult',
         'Install-WindowsImageUpdate',
 

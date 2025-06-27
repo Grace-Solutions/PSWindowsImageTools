@@ -89,7 +89,7 @@ namespace PSWindowsImageTools.Models
             get
             {
                 if (Size == 0) return "Unknown";
-                
+
                 string[] sizes = { "B", "KB", "MB", "GB" };
                 double len = Size;
                 int order = 0;
@@ -101,5 +101,64 @@ namespace PSWindowsImageTools.Models
                 return $"{len:0.##} {sizes[order]}";
             }
         }
+
+        #region Size Conversion Methods
+
+        /// <summary>
+        /// Converts the size from bytes to kilobytes
+        /// </summary>
+        /// <returns>Size in kilobytes (KB) rounded to 2 decimal places</returns>
+        public double ToKB()
+        {
+            return Math.Round(Size / 1024.0, 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to megabytes
+        /// </summary>
+        /// <returns>Size in megabytes (MB) rounded to 2 decimal places</returns>
+        public double ToMB()
+        {
+            return Math.Round(Size / (1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to gigabytes
+        /// </summary>
+        /// <returns>Size in gigabytes (GB) rounded to 2 decimal places</returns>
+        public double ToGB()
+        {
+            return Math.Round(Size / (1024.0 * 1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to terabytes
+        /// </summary>
+        /// <returns>Size in terabytes (TB) rounded to 2 decimal places</returns>
+        public double ToTB()
+        {
+            return Math.Round(Size / (1024.0 * 1024.0 * 1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Returns a human-readable size string with appropriate unit
+        /// </summary>
+        /// <param name="decimals">Number of decimal places to show (default: 2)</param>
+        /// <returns>Formatted size string (e.g., "1.23 MB")</returns>
+        public string ToHumanReadableSize(int decimals = 2)
+        {
+            if (Size >= 1024L * 1024L * 1024L * 1024L) // TB
+                return $"{ToTB().ToString($"F{decimals}")} TB";
+            else if (Size >= 1024L * 1024L * 1024L) // GB
+                return $"{ToGB().ToString($"F{decimals}")} GB";
+            else if (Size >= 1024L * 1024L) // MB
+                return $"{ToMB().ToString($"F{decimals}")} MB";
+            else if (Size >= 1024L) // KB
+                return $"{ToKB().ToString($"F{decimals}")} KB";
+            else
+                return $"{Size} bytes";
+        }
+
+        #endregion
     }
 }

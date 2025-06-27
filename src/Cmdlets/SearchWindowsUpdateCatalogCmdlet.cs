@@ -42,11 +42,7 @@ namespace PSWindowsImageTools.Cmdlets
         [ValidateRange(1, 1000)]
         public int MaxResults { get; set; } = 50;
 
-        /// <summary>
-        /// Include download URLs in results (slower but more complete)
-        /// </summary>
-        [Parameter(Mandatory = false)]
-        public SwitchParameter IncludeDownloadUrls { get; set; }
+
 
         /// <summary>
         /// Classification filter (e.g., "Security Updates", "Critical Updates")
@@ -64,7 +60,7 @@ namespace PSWindowsImageTools.Cmdlets
         /// Enable debug mode with detailed HTTP logging and global variables
         /// </summary>
         [Parameter(Mandatory = false)]
-        public SwitchParameter Debug { get; set; }
+        public SwitchParameter DebugMode { get; set; }
 
         private readonly List<string> _allQueries = new List<string>();
         private const string ComponentName = "WindowsUpdateCatalog";
@@ -183,15 +179,9 @@ namespace PSWindowsImageTools.Cmdlets
                 Product = Product
             };
 
-            var searchResult = catalogService.SearchUpdates(criteria, IncludeDownloadUrls.IsPresent, Debug.IsPresent, this);
+            var searchResult = catalogService.SearchUpdates(criteria, false, DebugMode.IsPresent, this);
 
             var newResults = searchResult.Updates.Select(ConvertToNewModel).ToList();
-
-            // Get download URLs if requested
-            if (IncludeDownloadUrls.IsPresent && newResults.Any())
-            {
-                GetDownloadUrls(newResults, catalogService);
-            }
 
             return newResults;
         }
@@ -207,7 +197,7 @@ namespace PSWindowsImageTools.Cmdlets
                 KBNumber = oldUpdate.KBNumber,
                 Title = oldUpdate.Title,
                 Description = string.Empty, // WindowsUpdate doesn't have Description
-                Products = oldUpdate.Products.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries),
+                Products = oldUpdate.ProductsList?.ToArray() ?? Array.Empty<string>(),
                 Classification = oldUpdate.Classification,
                 LastModified = oldUpdate.LastUpdated,
                 Size = oldUpdate.SizeInBytes,
@@ -218,36 +208,7 @@ namespace PSWindowsImageTools.Cmdlets
             };
         }
 
-        /// <summary>
-        /// Gets download URLs for catalog results
-        /// </summary>
-        private void GetDownloadUrls(List<WindowsUpdateCatalogResult> results, WindowsUpdateCatalogService catalogService)
-        {
-            LoggingService.WriteVerbose(this, $"Retrieving download URLs for {results.Count} results");
 
-            for (int i = 0; i < results.Count; i++)
-            {
-                var result = results[i];
-                var progress = (int)((double)(i + 1) / results.Count * 100);
-
-                LoggingService.WriteProgress(this, "Getting Download URLs",
-                    $"[{i + 1} of {results.Count}] - {result.KBNumber}",
-                    $"Retrieving download URLs ({progress}%)", progress);
-
-                try
-                {
-                    var urls = catalogService.GetDownloadUrls(result.UpdateId, this);
-                    result.DownloadUrls = urls.ToArray();
-                    result.HasDownloadUrls = urls.Any();
-                }
-                catch (Exception ex)
-                {
-                    LoggingService.WriteWarning(this, $"Failed to get download URLs for {result.KBNumber}: {ex.Message}");
-                }
-            }
-
-            LoggingService.CompleteProgress(this, "Getting Download URLs");
-        }
 
         /// <summary>
         /// Applies filters to the results

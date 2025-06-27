@@ -48,7 +48,7 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
 
-    <PackageReference Include="System.Text.Json" Version="9.0.0">
+    <PackageReference Include="System.Text.Json" Version="4.7.2">
       <PrivateAssets>all</PrivateAssets>
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>

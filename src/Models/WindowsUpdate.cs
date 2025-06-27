@@ -25,9 +25,14 @@ namespace PSWindowsImageTools.Models
         public string KBNumber { get; set; } = string.Empty;
 
         /// <summary>
-        /// Products that this update applies to
+        /// Products that this update applies to (comma-separated string for compatibility)
         /// </summary>
         public string Products { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Products that this update applies to (as a list of unique, trimmed product names)
+        /// </summary>
+        public List<string> ProductsList { get; set; } = new List<string>();
 
         /// <summary>
         /// Classification of the update (Security Updates, Critical Updates, etc.)
@@ -101,6 +106,65 @@ namespace PSWindowsImageTools.Models
         {
             return $"{KBNumber} - {Title} ({Architecture})";
         }
+
+        #region Size Conversion Methods
+
+        /// <summary>
+        /// Converts the size from bytes to kilobytes
+        /// </summary>
+        /// <returns>Size in kilobytes (KB) rounded to 2 decimal places</returns>
+        public double ToKB()
+        {
+            return Math.Round(SizeInBytes / 1024.0, 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to megabytes
+        /// </summary>
+        /// <returns>Size in megabytes (MB) rounded to 2 decimal places</returns>
+        public double ToMB()
+        {
+            return Math.Round(SizeInBytes / (1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to gigabytes
+        /// </summary>
+        /// <returns>Size in gigabytes (GB) rounded to 2 decimal places</returns>
+        public double ToGB()
+        {
+            return Math.Round(SizeInBytes / (1024.0 * 1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Converts the size from bytes to terabytes
+        /// </summary>
+        /// <returns>Size in terabytes (TB) rounded to 2 decimal places</returns>
+        public double ToTB()
+        {
+            return Math.Round(SizeInBytes / (1024.0 * 1024.0 * 1024.0 * 1024.0), 2);
+        }
+
+        /// <summary>
+        /// Returns a human-readable size string with appropriate unit
+        /// </summary>
+        /// <param name="decimals">Number of decimal places to show (default: 2)</param>
+        /// <returns>Formatted size string (e.g., "1.23 MB")</returns>
+        public string ToHumanReadableSize(int decimals = 2)
+        {
+            if (SizeInBytes >= 1024L * 1024L * 1024L * 1024L) // TB
+                return $"{ToTB().ToString($"F{decimals}")} TB";
+            else if (SizeInBytes >= 1024L * 1024L * 1024L) // GB
+                return $"{ToGB().ToString($"F{decimals}")} GB";
+            else if (SizeInBytes >= 1024L * 1024L) // MB
+                return $"{ToMB().ToString($"F{decimals}")} MB";
+            else if (SizeInBytes >= 1024L) // KB
+                return $"{ToKB().ToString($"F{decimals}")} KB";
+            else
+                return $"{SizeInBytes} bytes";
+        }
+
+        #endregion
     }
 
     /// <summary>

@@ -85,7 +85,13 @@ namespace PSWindowsImageTools.Services
         /// </summary>
         public WindowsUpdateCatalogService()
         {
-            _httpClient = new HttpClient();
+            // Create HttpClientHandler with automatic decompression
+            var handler = new HttpClientHandler()
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            _httpClient = new HttpClient(handler);
 
             // Configure HttpClient to mimic browser behavior (required by catalog)
             _httpClient.DefaultRequestHeaders.Add("User-Agent",
@@ -379,7 +385,21 @@ namespace PSWindowsImageTools.Services
                 }
 
                 // Parse update rows (skip header row)
-                var rows = resultsTable.SelectNodes(".//tr")?.Where(r => r.Id != "headerRow").ToList();
+                var allRows = resultsTable.SelectNodes(".//tr");
+                var rows = allRows?.Where(r => r.Id != "headerRow" && !string.IsNullOrEmpty(r.Id)).ToList();
+
+                if (debugMode)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] Total table rows: {allRows?.Count ?? 0}");
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] Data rows (excluding header): {rows?.Count ?? 0}");
+                    if (rows != null && rows.Any())
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] First row ID: {rows.First().Id}");
+                        var firstRowCellCount = rows.First().SelectNodes(".//td")?.Count ?? 0;
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] First row cell count: {firstRowCellCount}");
+                    }
+                }
+
                 if (rows == null || !rows.Any())
                 {
                     session.Warnings.Add("No update rows found in results table");
@@ -396,11 +416,23 @@ namespace PSWindowsImageTools.Services
                         if (update != null)
                         {
                             result.Updates.Add(update);
+                            if (debugMode)
+                            {
+                                LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] Parsed update: {update.UpdateId} - {update.Title}");
+                            }
+                        }
+                        else if (debugMode)
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] Failed to parse row: {row.Id}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        session.Warnings.Add($"Failed to parse update row: {ex.Message}");
+                        session.Warnings.Add($"Failed to parse update row {row.Id}: {ex.Message}");
+                        if (debugMode)
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"[DEBUG] Exception parsing row {row.Id}: {ex}");
+                        }
                     }
                 }
 
@@ -418,6 +450,7 @@ namespace PSWindowsImageTools.Services
 
         /// <summary>
         /// Gets download URLs for a specific update
+        /// Based on Windows Update Catalog specification
         /// </summary>
         /// <param name="updateId">Update ID</param>
         /// <param name="cmdlet">PowerShell cmdlet for logging</param>
@@ -430,10 +463,11 @@ namespace PSWindowsImageTools.Services
             {
                 LoggingService.WriteVerbose(cmdlet, ServiceName, $"Getting download URLs for update: {updateId}");
 
-                // Use MSCatalog approach: POST JSON to DownloadDialog.aspx
+                // Use specification format: POST form data to DownloadDialog.aspx
                 var postData = new Dictionary<string, string>
                 {
-                    ["updateIDs"] = $"[{{\"size\":0,\"updateID\":\"{updateId}\",\"uidInfo\":\"{updateId}\"}}]"
+                    ["updateIDs"] = $"[{{\"size\":0,\"updateID\":\"{updateId}\",\"sku\":\"\"}}]",
+                    ["sku"] = ""
                 };
 
                 var downloadUrl = $"{CatalogBaseUrl}/DownloadDialog.aspx";
@@ -632,40 +666,65 @@ namespace PSWindowsImageTools.Services
 
         /// <summary>
         /// Parses a single update row from the results table
+        /// Based on Windows Update Catalog specification:
+        /// C0: Icon/Checkbox (skip), C1: Title, C2: Products, C3: Classification,
+        /// C4: Last Updated, C5: Version, C6: Size, C7: Download
         /// </summary>
         private WindowsUpdate? ParseUpdateRow(HtmlNode row, PSCmdlet? cmdlet)
         {
             try
             {
                 var cells = row.SelectNodes(".//td");
-                if (cells == null || cells.Count < 6) return null;
+                if (cells == null || cells.Count < 7)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Row has insufficient columns: {cells?.Count ?? 0} (need at least 7)");
+                    return null; // Need at least 7 columns (C0-C6)
+                }
 
                 var update = new WindowsUpdate();
 
-                // Title (first cell)
-                var titleCell = cells[0];
-                var titleLink = titleCell.SelectSingleNode(".//a");
-                if (titleLink != null)
+                // Extract update ID from row ID attribute (format: {uuid}_R{index})
+                var rowId = row.GetAttributeValue("id", "");
+                if (!string.IsNullOrEmpty(rowId))
                 {
-                    update.Title = HtmlEntity.DeEntitize(titleLink.InnerText?.Trim() ?? "");
-                    
-                    // Extract update ID from onclick attribute
-                    var onclickAttr = titleLink.GetAttributeValue("onclick", "");
-                    var updateIdMatch = Regex.Match(onclickAttr, @"'([^']+)'");
+                    var updateIdMatch = Regex.Match(rowId, @"^([a-f0-9\-]+)_R\d+$", RegexOptions.IgnoreCase);
                     if (updateIdMatch.Success)
                     {
                         update.UpdateId = updateIdMatch.Groups[1].Value;
                     }
+                    else
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Could not extract update ID from row ID: {rowId}");
+                    }
+                }
+                else
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, "Row has no ID attribute");
                 }
 
-                // Products (second cell)
-                update.Products = HtmlEntity.DeEntitize(cells[1].InnerText?.Trim() ?? "");
+                // C1: Title (second cell - skip C0 which is icon/checkbox)
+                var titleCell = cells[1];
+                var titleLink = titleCell.SelectSingleNode(".//a");
+                if (titleLink != null)
+                {
+                    update.Title = HtmlEntity.DeEntitize(titleLink.InnerText?.Trim() ?? "");
+                }
+                else
+                {
+                    // Fallback to cell text if no link found
+                    update.Title = HtmlEntity.DeEntitize(titleCell.InnerText?.Trim() ?? "");
+                }
 
-                // Classification (third cell)
-                update.Classification = HtmlEntity.DeEntitize(cells[2].InnerText?.Trim() ?? "");
+                // C2: Products (third cell) - Parse and clean up products list
+                var productsText = HtmlEntity.DeEntitize(cells[2].InnerText?.Trim() ?? "");
+                update.ProductsList = ParseProductsList(productsText);
+                update.Products = string.Join(", ", update.ProductsList);
 
-                // Last Updated (fourth cell) - Parse using MSCatalog approach (MM/dd/yyyy format)
-                var lastUpdatedText = cells[3].InnerText?.Trim() ?? "";
+                // C3: Classification (fourth cell)
+                update.Classification = HtmlEntity.DeEntitize(cells[3].InnerText?.Trim() ?? "");
+
+                // C4: Last Updated (fifth cell) - Parse using MM/dd/yyyy format
+                var lastUpdatedText = cells[4].InnerText?.Trim() ?? "";
                 if (!string.IsNullOrEmpty(lastUpdatedText))
                 {
                     // Try MSCatalog date parsing approach first (MM/dd/yyyy)
@@ -679,47 +738,61 @@ namespace PSWindowsImageTools.Services
                     }
                 }
 
-                // Version (fifth cell)
-                update.Version = HtmlEntity.DeEntitize(cells[4].InnerText?.Trim() ?? "");
+                // C5: Version (sixth cell)
+                update.Version = HtmlEntity.DeEntitize(cells[5].InnerText?.Trim() ?? "");
+                if (update.Version == "n/a") update.Version = string.Empty;
 
-                // Size (sixth cell)
-                var sizeText = cells[5].InnerText?.Trim() ?? "";
+                // C6: Size (seventh cell) - Handle both human-readable and hidden byte count
+                var sizeCell = cells[6];
+                var sizeText = sizeCell.InnerText?.Trim() ?? "";
                 update.SizeFormatted = sizeText;
-                
-                // Parse size in bytes
-                var sizeMatch = Regex.Match(sizeText, @"([\d,]+)\s*([KMGT]?B)");
-                if (sizeMatch.Success)
+
+                // Try to extract hidden byte count first (more accurate)
+                var hiddenSizeElement = sizeCell.SelectSingleNode(".//span[@style='display:none']");
+                if (hiddenSizeElement != null && long.TryParse(hiddenSizeElement.InnerText?.Trim(), out long exactBytes))
                 {
-                    var sizeValue = sizeMatch.Groups[1].Value.Replace(",", "");
-                    var sizeUnit = sizeMatch.Groups[2].Value.ToUpper();
-                    
-                    if (double.TryParse(sizeValue, out double size))
+                    update.SizeInBytes = exactBytes;
+                }
+                else
+                {
+                    // Fallback to parsing human-readable size
+                    var sizeMatch = Regex.Match(sizeText, @"([\d,\.]+)\s*([KMGT]?B)", RegexOptions.IgnoreCase);
+                    if (sizeMatch.Success)
                     {
-                        update.SizeInBytes = sizeUnit switch
+                        var sizeValue = sizeMatch.Groups[1].Value.Replace(",", "");
+                        var sizeUnit = sizeMatch.Groups[2].Value.ToUpper();
+
+                        if (double.TryParse(sizeValue, out double size))
                         {
-                            "KB" => (long)(size * 1024),
-                            "MB" => (long)(size * 1024 * 1024),
-                            "GB" => (long)(size * 1024 * 1024 * 1024),
-                            "TB" => (long)(size * 1024 * 1024 * 1024 * 1024),
-                            _ => (long)size
-                        };
+                            update.SizeInBytes = sizeUnit switch
+                            {
+                                "KB" => (long)(size * 1024),
+                                "MB" => (long)(size * 1024 * 1024),
+                                "GB" => (long)(size * 1024 * 1024 * 1024),
+                                "TB" => (long)(size * 1024 * 1024 * 1024 * 1024),
+                                _ => (long)size
+                            };
+                        }
                     }
                 }
 
                 // Extract KB number from title
-                var kbMatch = Regex.Match(update.Title, @"KB(\d+)", RegexOptions.IgnoreCase);
+                var kbMatch = Regex.Match(update.Title, @"\(KB(\d+)\)", RegexOptions.IgnoreCase);
                 if (kbMatch.Success)
                 {
-                    update.KBNumber = kbMatch.Groups[1].Value;
+                    update.KBNumber = "KB" + kbMatch.Groups[1].Value;
                 }
 
-                // Determine architecture from title/products
-                if (update.Title.Contains("x64") || update.Products.Contains("x64"))
-                    update.Architecture = "x64";
-                else if (update.Title.Contains("x86") || update.Products.Contains("x86"))
-                    update.Architecture = "x86";
-                else if (update.Title.Contains("ARM64") || update.Products.Contains("ARM64"))
+                // Determine architecture from title/products with better patterns
+                var titleAndProducts = $"{update.Title} {update.Products}".ToLowerInvariant();
+                if (titleAndProducts.Contains("arm64") || titleAndProducts.Contains("arm-based"))
                     update.Architecture = "ARM64";
+                else if (titleAndProducts.Contains("x64") || titleAndProducts.Contains("amd64") || titleAndProducts.Contains("64-bit"))
+                    update.Architecture = "x64";
+                else if (titleAndProducts.Contains("x86") || titleAndProducts.Contains("32-bit"))
+                    update.Architecture = "x86";
+                else
+                    update.Architecture = "Unknown";
 
                 return update;
             }
@@ -731,7 +804,8 @@ namespace PSWindowsImageTools.Services
         }
 
         /// <summary>
-        /// Parses download URLs from the download dialog HTML using MSCatalog approach
+        /// Parses download URLs from the download dialog HTML
+        /// Based on Windows Update Catalog specification - extracts URLs from JavaScript downloadInformation variable
         /// </summary>
         private static List<string> ParseDownloadUrls(string html, PSCmdlet? cmdlet)
         {
@@ -739,22 +813,37 @@ namespace PSWindowsImageTools.Services
 
             try
             {
-                // Use MSCatalog regex approach for finding download URLs
-                var cleanedHtml = html.Replace("www.download.windowsupdate", "download.windowsupdate");
-                var regex = new Regex(@"(http[s]?\:\/\/(?:dl\.delivery\.mp\.microsoft\.com|(?:catalog\.s\.)?download\.windowsupdate\.com)\/[^\'\""]*)", RegexOptions.IgnoreCase);
-                var matches = regex.Matches(cleanedHtml);
+                // Primary method: Extract from JavaScript downloadInformation variable as per specification
+                var urlPattern = @"\.url\s*=\s*'([^']+)'";
+                var urlMatches = Regex.Matches(html, urlPattern, RegexOptions.IgnoreCase);
 
-                foreach (Match match in matches)
+                foreach (Match match in urlMatches)
                 {
-                    if (match.Success && Uri.IsWellFormedUriString(match.Value, UriKind.Absolute))
+                    if (match.Success && Uri.IsWellFormedUriString(match.Groups[1].Value, UriKind.Absolute))
                     {
-                        urls.Add(match.Value);
+                        urls.Add(match.Groups[1].Value);
                     }
                 }
 
+                // Fallback method: Use broader regex for Microsoft domains
                 if (urls.Count == 0)
                 {
-                    // Fallback to HTML parsing if regex fails
+                    var cleanedHtml = html.Replace("www.download.windowsupdate", "download.windowsupdate");
+                    var fallbackRegex = new Regex(@"(https?://(?:catalog\.sf\.)?dl\.delivery\.mp\.microsoft\.com/[^'""]*|https?://(?:catalog\.s\.)?download\.windowsupdate\.com/[^'""]*)", RegexOptions.IgnoreCase);
+                    var fallbackMatches = fallbackRegex.Matches(cleanedHtml);
+
+                    foreach (Match match in fallbackMatches)
+                    {
+                        if (match.Success && Uri.IsWellFormedUriString(match.Value, UriKind.Absolute))
+                        {
+                            urls.Add(match.Value);
+                        }
+                    }
+                }
+
+                // Last resort: HTML parsing for any HTTP links
+                if (urls.Count == 0)
+                {
                     var doc = new HtmlDocument();
                     doc.LoadHtml(html);
 
@@ -771,6 +860,9 @@ namespace PSWindowsImageTools.Services
                         }
                     }
                 }
+
+                // Remove duplicates
+                urls = urls.Distinct().ToList();
             }
             catch (Exception ex)
             {
@@ -806,6 +898,51 @@ namespace PSWindowsImageTools.Services
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Parses a products string into a list of unique, trimmed product names
+        /// Handles the fact that some product names may contain commas
+        /// Based on actual Windows Update Catalog format: "Product1, Product2, Product3"
+        /// </summary>
+        private static List<string> ParseProductsList(string productsText)
+        {
+            if (string.IsNullOrWhiteSpace(productsText))
+                return new List<string>();
+
+            var products = new List<string>();
+
+            // The catalog uses ", " (comma + space) as the primary separator
+            // But we need to be smart about product names that contain commas
+            var potentialProducts = productsText.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Clean up each product name
+            foreach (var product in potentialProducts)
+            {
+                var cleaned = product.Trim()
+                    .Replace("\u00A0", " ") // Replace non-breaking spaces
+                    .Replace("  ", " ")     // Replace double spaces
+                    .Trim();
+
+                if (!string.IsNullOrEmpty(cleaned) && cleaned.Length > 1)
+                {
+                    products.Add(cleaned);
+                }
+            }
+
+            // Remove duplicates while preserving order
+            var uniqueProducts = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var product in products)
+            {
+                if (seen.Add(product))
+                {
+                    uniqueProducts.Add(product);
+                }
+            }
+
+            return uniqueProducts;
         }
 
         /// <summary>
