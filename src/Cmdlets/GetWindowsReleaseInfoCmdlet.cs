@@ -141,7 +141,7 @@ namespace PSWindowsImageTools.Cmdlets
 
                 // Get release information using the Windows Release History service
                 var releaseInfoService = new WindowsReleaseHistoryService(HttpClient, this, ContinueOnError.IsPresent);
-                var allReleases = Task.Run(async () => await releaseInfoService.GetWindowsReleaseHistoryAsync()).Result;
+                var allReleases = releaseInfoService.GetWindowsReleaseHistory();
 
                 LoggingService.WriteVerbose(this, $"Retrieved {allReleases.Count} release records");
 
