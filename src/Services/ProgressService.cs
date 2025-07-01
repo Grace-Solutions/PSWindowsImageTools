@@ -213,5 +213,44 @@ namespace PSWindowsImageTools.Services
 
             cmdlet.WriteProgress(progressRecord);
         }
+
+        /// <summary>
+        /// Creates a progress callback for update installation operations
+        /// </summary>
+        /// <param name="cmdlet">The cmdlet instance for progress reporting</param>
+        /// <param name="activity">The main activity description</param>
+        /// <param name="updateName">Update being installed</param>
+        /// <param name="currentIndex">Current index (1-based)</param>
+        /// <param name="totalCount">Total count of updates</param>
+        /// <param name="parentId">Parent progress ID for hierarchical progress</param>
+        /// <returns>Progress callback action</returns>
+        public static Action<int, string> CreateInstallProgressCallback(
+            PSCmdlet cmdlet,
+            string activity,
+            string updateName,
+            int currentIndex,
+            int totalCount,
+            int parentId = 0)
+        {
+            return (percentage, operation) =>
+            {
+                var statusDescription = totalCount > 1
+                    ? $"{currentIndex} of {totalCount} - {updateName}"
+                    : updateName;
+
+                var progressRecord = new ProgressRecord(parentId + 2, activity, statusDescription)
+                {
+                    CurrentOperation = operation,
+                    ParentActivityId = parentId
+                };
+
+                if (percentage >= 0 && percentage <= 100)
+                {
+                    progressRecord.PercentComplete = percentage;
+                }
+
+                cmdlet.WriteProgress(progressRecord);
+            };
+        }
     }
 }

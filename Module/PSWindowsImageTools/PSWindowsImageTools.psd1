@@ -61,6 +61,13 @@
         'Get-PatchTuesday',
         'Save-WindowsUpdateCatalogResult',
         'Install-WindowsImageUpdate',
+        'Install-WindowsUpdateFile',
+
+        # Windows Release Information
+        'Get-WindowsReleaseInfo',
+
+        # Image Customization
+        'Add-SetupCompleteAction',
 
         # Database Operations
         'Search-WindowsImageDatabase',

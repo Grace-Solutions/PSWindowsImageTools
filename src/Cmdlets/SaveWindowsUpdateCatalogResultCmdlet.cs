@@ -149,15 +149,17 @@ namespace PSWindowsImageTools.Cmdlets
                 var successPercentage = totalCount > 0 ? Math.Round((double)successCount / totalCount * 100, 1) : 0;
                 var failurePercentage = totalCount > 0 ? Math.Round((double)failureCount / totalCount * 100, 1) : 0;
 
+                var downloadSummary = FormatUtilityService.FormatCollectionSummary(downloadableResults, "download");
                 LoggingService.LogOperationCompleteWithTimestamp(this, ComponentName, "Download Windows Updates", operationStartTime,
-                    $"Completed {totalCount} download(s)");
+                    $"Completed {downloadSummary}");
 
                 LoggingService.WriteVerbose(this, $"Succeeded: {successCount} of {totalCount} ({successPercentage}%)");
                 LoggingService.WriteVerbose(this, $"Failed: {failureCount} of {totalCount} ({failurePercentage}%)");
 
                 if (failureCount > 0)
                 {
-                    WriteWarning($"{failureCount} downloads failed. Check the ErrorMessage property for details.");
+                    var failureSummary = FormatUtilityService.FormatCollectionSummary(packages.Where(p => !p.IsDownloaded), "download");
+                    WriteWarning($"{failureSummary} failed. Check the ErrorMessage property for details.");
                 }
             }
             catch (Exception ex)
@@ -421,7 +423,7 @@ namespace PSWindowsImageTools.Cmdlets
 
                 // Check if partial file exists and resume is enabled
                 long startPosition = 0;
-                if (Resume.IsPresent && destinationFile.Exists)
+                if (Resume.IsPresent && destinationFile?.Exists == true)
                 {
                     startPosition = destinationFile.Length;
                     LoggingService.WriteVerbose(this, $"Resuming download from position: {startPosition:N0} bytes");
@@ -450,7 +452,7 @@ namespace PSWindowsImageTools.Cmdlets
                 {
                     LoggingService.WriteWarning(this, "Server doesn't support resume, starting fresh download");
                     startPosition = 0;
-                    destinationFile.Delete();
+                    destinationFile?.Delete();
                 }
                 else
                 {
@@ -464,7 +466,7 @@ namespace PSWindowsImageTools.Cmdlets
                 LoggingService.WriteVerbose(this, sizeMessage);
 
                 using var contentStream = response.Content.ReadAsStreamAsync().Result;
-                using var fileStream = new FileStream(destinationFile.FullName,
+                using var fileStream = new FileStream(destinationFile?.FullName ?? throw new InvalidOperationException("Destination file path is null"),
                     startPosition > 0 ? FileMode.Append : FileMode.Create,
                     FileAccess.Write, FileShare.None, 8192, false);
 
