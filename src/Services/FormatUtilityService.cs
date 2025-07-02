@@ -142,11 +142,15 @@ namespace PSWindowsImageTools.Services
             // Clean the version string
             var cleanedVersion = CleanVersionString(versionString);
 
-            // Try direct parsing
+            // Try direct parsing first
             if (Version.TryParse(cleanedVersion, out result))
+            {
+                // Ensure Windows versions have proper 10.0.x.x format
+                result = NormalizeWindowsVersion(result);
                 return true;
+            }
 
-            // Try extracting version pattern
+            // Try extracting 4-part version pattern
             var versionMatch = Regex.Match(cleanedVersion, @"(\d+)\.(\d+)\.(\d+)\.(\d+)");
             if (versionMatch.Success)
             {
@@ -156,11 +160,12 @@ namespace PSWindowsImageTools.Services
                     int.TryParse(versionMatch.Groups[4].Value, out var revision))
                 {
                     result = new Version(major, minor, build, revision);
+                    result = NormalizeWindowsVersion(result);
                     return true;
                 }
             }
 
-            // Try 3-part version
+            // Try 3-part version pattern
             versionMatch = Regex.Match(cleanedVersion, @"(\d+)\.(\d+)\.(\d+)");
             if (versionMatch.Success)
             {
@@ -168,12 +173,74 @@ namespace PSWindowsImageTools.Services
                     int.TryParse(versionMatch.Groups[2].Value, out var minor) &&
                     int.TryParse(versionMatch.Groups[3].Value, out var build))
                 {
-                    result = new Version(major, minor, build);
+                    result = new Version(major, minor, build, 0);
+                    result = NormalizeWindowsVersion(result);
                     return true;
                 }
             }
 
+            // Try 2-part version pattern (build.revision only)
+            versionMatch = Regex.Match(cleanedVersion, @"^(\d+)\.(\d+)$");
+            if (versionMatch.Success)
+            {
+                if (int.TryParse(versionMatch.Groups[1].Value, out var build) &&
+                    int.TryParse(versionMatch.Groups[2].Value, out var revision))
+                {
+                    // Assume Windows 10/11 format: 10.0.build.revision
+                    result = new Version(10, 0, build, revision);
+                    return true;
+                }
+            }
+
+            // Try single number (build number only)
+            if (int.TryParse(cleanedVersion, out var buildOnly) && buildOnly > 1000)
+            {
+                // Assume Windows 10/11 format: 10.0.build.0
+                result = new Version(10, 0, buildOnly, 0);
+                return true;
+            }
+
             return false;
+        }
+
+        /// <summary>
+        /// Normalizes Windows version to ensure proper format and handle future kernel versions
+        /// </summary>
+        /// <param name="version">The version to normalize</param>
+        /// <returns>Normalized version with proper Windows format</returns>
+        private static Version NormalizeWindowsVersion(Version version)
+        {
+            // Current Windows versions use 10.0.x.x format
+            // Future placeholder: If Microsoft changes kernel version (e.g., 11.0.x.x),
+            // this method can be updated to handle the transition
+
+            // Handle incomplete versions by ensuring 10.0.x.x format for Windows
+            if (version.Major == 10 && version.Minor == 0)
+            {
+                // Already in correct format
+                return version;
+            }
+            else if (version.Major >= 10000 && version.Minor >= 0)
+            {
+                // Likely a build.revision format, convert to 10.0.build.revision
+                return new Version(10, 0, version.Major, version.Minor);
+            }
+            else if (version.Major > 0 && version.Minor == 0 && version.Build == -1)
+            {
+                // Single number version, treat as build number
+                return new Version(10, 0, version.Major, 0);
+            }
+
+            // TODO: Future kernel version handling
+            // When Microsoft releases Windows with a new kernel version (e.g., 11.0.x.x),
+            // add detection logic here based on build number ranges or other indicators
+            // Example:
+            // if (version.Build >= FUTURE_KERNEL_BUILD_THRESHOLD)
+            // {
+            //     return new Version(11, 0, version.Build, version.Revision);
+            // }
+
+            return version;
         }
 
         /// <summary>

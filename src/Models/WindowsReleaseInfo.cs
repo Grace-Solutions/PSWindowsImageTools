@@ -22,7 +22,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Release ID (21H2, 22H2, 23H2, 24H2, etc.)
         /// </summary>
-        public string ReleaseId { get; set; } = string.Empty;
+        public string ReleaseID { get; set; } = string.Empty;
 
         /// <summary>
         /// Initial release version when this release was first made available
@@ -40,90 +40,14 @@ namespace PSWindowsImageTools.Models
         public WindowsRelease[] Releases { get; set; } = Array.Empty<WindowsRelease>();
 
         /// <summary>
-        /// Gets the latest release in this collection
-        /// </summary>
-        public WindowsRelease? LatestRelease => Releases?.OrderByDescending(r => r.AvailabilityDate).FirstOrDefault();
-
-        /// <summary>
-        /// Gets the latest KB article for this release
-        /// </summary>
-        public string LatestKBArticle => LatestRelease?.KBArticle ?? string.Empty;
-
-        /// <summary>
-        /// Gets the latest version for this release
-        /// </summary>
-        public Version LatestVersion => LatestRelease?.Version ?? InitialReleaseVersion;
-
-        /// <summary>
-        /// Gets the build number for this release
-        /// </summary>
-        public int BuildNumber => InitialReleaseVersion.Build;
-
-        /// <summary>
         /// Gets the number of releases/updates available
         /// </summary>
         public int ReleaseCount => Releases?.Length ?? 0;
 
         /// <summary>
-        /// Gets the normalized operating system name
+        /// Gets the latest release in this collection
         /// </summary>
-        public string NormalizedOperatingSystem => Services.FormatUtilityService.NormalizeOperatingSystemName(OperatingSystem);
-
-        /// <summary>
-        /// Gets the normalized release ID
-        /// </summary>
-        public string NormalizedReleaseId => Services.FormatUtilityService.NormalizeReleaseId(ReleaseId);
-
-        /// <summary>
-        /// Gets the age of the latest release
-        /// </summary>
-        public TimeSpan LatestReleaseAge => LatestRelease != null ? DateTime.Now - LatestRelease.AvailabilityDate : TimeSpan.Zero;
-
-        /// <summary>
-        /// Gets the formatted age of the latest release
-        /// </summary>
-        public string LatestReleaseAgeFormatted => Services.FormatUtilityService.FormatDuration(LatestReleaseAge);
-
-        /// <summary>
-        /// Gets releases that have KB articles
-        /// </summary>
-        public WindowsRelease[] ReleasesWithKB => Releases?.Where(r => !string.IsNullOrEmpty(r.KBArticle)).ToArray() ?? Array.Empty<WindowsRelease>();
-
-        /// <summary>
-        /// Gets the number of releases with KB articles
-        /// </summary>
-        public int ReleasesWithKBCount => ReleasesWithKB.Length;
-
-        /// <summary>
-        /// Gets all KB articles for this release
-        /// </summary>
-        public string[] AllKBArticles => Releases?.Where(r => !string.IsNullOrEmpty(r.KBArticle))
-                                                   .Select(r => r.KBArticle)
-                                                   .Distinct()
-                                                   .ToArray() ?? Array.Empty<string>();
-
-        /// <summary>
-        /// Gets all servicing options available for this release
-        /// </summary>
-        public string[] AllServicingOptions => Releases?.SelectMany(r => r.ServicingOptions)
-                                                        .Distinct()
-                                                        .ToArray() ?? Array.Empty<string>();
-
-        /// <summary>
-        /// Whether this release supports LTSC/LTSB servicing
-        /// </summary>
-        public bool SupportsLTSC => AllServicingOptions.Any(s =>
-            s.IndexOf("LTSC", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            s.IndexOf("LTSB", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            s.IndexOf("Long Term", StringComparison.OrdinalIgnoreCase) >= 0);
-
-        /// <summary>
-        /// Returns a string representation of the release info
-        /// </summary>
-        public override string ToString()
-        {
-            return $"{OperatingSystem} {ReleaseId} (Build {BuildNumber}) - {ReleaseCount} releases";
-        }
+        public WindowsRelease? LatestRelease => Releases?.OrderByDescending(r => r.AvailabilityDate).FirstOrDefault();
     }
 
     /// <summary>
@@ -154,43 +78,11 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// URL to the KB article
         /// </summary>
-        public string KBArticleURL { get; set; } = string.Empty;
+        public Uri? KBArticleURL { get; set; }
 
         /// <summary>
-        /// Build number for this release
+        /// Whether this is the latest release in the collection
         /// </summary>
-        public int BuildNumber => Version.Build;
-
-        /// <summary>
-        /// Revision number for this release
-        /// </summary>
-        public int RevisionNumber => Version.Revision;
-
-        /// <summary>
-        /// Whether this release has a KB article
-        /// </summary>
-        public bool HasKBArticle => !string.IsNullOrEmpty(KBArticle);
-
-        /// <summary>
-        /// Whether this release supports LTSC/LTSB
-        /// </summary>
-        public bool IsLTSC => ServicingOptions.Any(s =>
-            s.IndexOf("LTSC", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            s.IndexOf("LTSB", StringComparison.OrdinalIgnoreCase) >= 0 ||
-            s.IndexOf("Long Term", StringComparison.OrdinalIgnoreCase) >= 0);
-
-        /// <summary>
-        /// Formatted servicing options as a single string
-        /// </summary>
-        public string ServicingOptionsFormatted => string.Join(", ", ServicingOptions);
-
-        /// <summary>
-        /// Returns a string representation of the release
-        /// </summary>
-        public override string ToString()
-        {
-            var kbInfo = HasKBArticle ? $" ({KBArticle})" : "";
-            return $"{Version}{kbInfo} - {AvailabilityDate:yyyy-MM-dd}";
-        }
+        public bool IsLatest { get; set; }
     }
 }

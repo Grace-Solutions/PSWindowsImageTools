@@ -68,6 +68,8 @@
 
         # Image Customization
         'Add-SetupCompleteAction',
+        'Install-WindowsUpdateFile',
+        'Reset-WindowsImageBase',
 
         # Database Operations
         'Search-WindowsImageDatabase',

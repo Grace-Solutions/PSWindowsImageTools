@@ -32,8 +32,20 @@ namespace PSWindowsImageTools.Cmdlets
         /// <summary>
         /// Save changes made to the mounted images (default is discard)
         /// </summary>
-        [Parameter(Mandatory = false)]
+        [Parameter(Mandatory = false, ParameterSetName = "Save")]
         public SwitchParameter Save { get; set; }
+
+        /// <summary>
+        /// Discard changes made to the mounted images (explicit discard)
+        /// </summary>
+        [Parameter(Mandatory = false, ParameterSetName = "Discard")]
+        public SwitchParameter Discard { get; set; }
+
+        /// <summary>
+        /// Append changes to the image (for images with multiple indexes)
+        /// </summary>
+        [Parameter(Mandatory = false, ParameterSetName = "Save")]
+        public SwitchParameter Append { get; set; }
 
         /// <summary>
         /// Force dismount even if there are open handles
@@ -94,10 +106,14 @@ namespace PSWindowsImageTools.Cmdlets
             {
 
 
+                // Determine operation mode for display
+                var operationMode = Save.IsPresent && !Discard.IsPresent ?
+                    (Append.IsPresent ? "Save with Append" : "Save") : "Discard";
+
                 // Show initial progress
-                LoggingService.WriteProgress(this, "Dismounting Windows Images", 
-                    $"Preparing to dismount {_allMountedImages.Count} images", 
-                    $"Save changes: {(Save.IsPresent ? "Yes" : "No")}", 0);
+                LoggingService.WriteProgress(this, "Dismounting Windows Images",
+                    $"Preparing to dismount {_allMountedImages.Count} images",
+                    $"Mode: {operationMode}", 0);
 
                 // Dismount each image
                 for (int i = 0; i < _allMountedImages.Count; i++)
@@ -180,17 +196,30 @@ namespace PSWindowsImageTools.Cmdlets
                     return result;
                 }
 
+                // Determine save/discard behavior
+                var shouldSave = Save.IsPresent && !Discard.IsPresent;
+                var saveMode = shouldSave ? (Append.IsPresent ? "Save with Append" : "Save") : "Discard";
+
                 LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath.FullName}");
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Save changes: {(Save.IsPresent ? "Yes" : "No")}");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Mode: {saveMode}");
 
                 // Report dismount progress - start
                 LoggingService.WriteProgress(this, "Dismounting Windows Images",
                     $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
-                    $"Initiating dismount operation from {mountedImage.MountPath.FullName}...",
+                    $"Initiating dismount operation from {mountedImage.MountPath.FullName} ({saveMode})...",
                     (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
 
                 var dismountStartTime = DateTime.UtcNow;
-                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath.FullName, Save.IsPresent);
+
+                // Use DISM API to unmount the image
+                // Note: Microsoft.Dism doesn't support append mode directly, so we'll log a warning
+                if (Append.IsPresent && shouldSave)
+                {
+                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Append mode not supported by Microsoft.Dism API, using standard save");
+                }
+
+                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath.FullName, shouldSave);
+
                 var dismountDuration = DateTime.UtcNow - dismountStartTime;
 
                 result.Status = MountStatus.Unmounted;

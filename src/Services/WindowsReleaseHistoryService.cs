@@ -19,6 +19,8 @@ namespace PSWindowsImageTools.Services
         private readonly HttpClient _httpClient;
         private readonly PSCmdlet? _cmdlet;
         private readonly bool _continueOnError;
+        private readonly List<string> _warnings = new List<string>();
+        private readonly List<(string message, Exception? exception)> _errors = new List<(string, Exception?)>();
 
         /// <summary>
         /// Gets the Microsoft Learn URLs for Windows release information using current culture
@@ -54,33 +56,9 @@ namespace PSWindowsImageTools.Services
         }
 
         /// <summary>
-        /// Gets Windows release history information from Microsoft sources (synchronous version)
+        /// Gets Windows release history information from Microsoft sources
         /// </summary>
         public List<WindowsReleaseInfo> GetWindowsReleaseHistory()
-        {
-            try
-            {
-                return GetWindowsReleaseHistoryAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to fetch Windows release history: {ex.Message}", ex);
-
-                if (!_continueOnError)
-                {
-                    // Provide sample data even on error
-                    LogVerbose("Providing sample release data due to connection issues...");
-                    return GetSampleReleaseData();
-                }
-
-                return new List<WindowsReleaseInfo>();
-            }
-        }
-
-        /// <summary>
-        /// Gets Windows release history information from Microsoft sources (async version)
-        /// </summary>
-        public async Task<List<WindowsReleaseInfo>> GetWindowsReleaseHistoryAsync()
         {
             var releaseInfoList = new List<WindowsReleaseInfo>();
 
@@ -96,6 +74,12 @@ namespace PSWindowsImageTools.Services
                 LogVerbose($"Using culture: {cultureName}");
                 LogVerbose($"Processing {urls.Length} Microsoft Learn release history URLs");
 
+                // Log all URLs that will be processed
+                for (int j = 0; j < urls.Length; j++)
+                {
+                    LogVerbose($"  URL {j + 1}: {urls[j]}");
+                }
+
                 // Process each URL
                 for (int i = 0; i < urls.Length; i++)
                 {
@@ -103,43 +87,38 @@ namespace PSWindowsImageTools.Services
                     {
                         var url = urls[i].Trim();
                         if (string.IsNullOrEmpty(url) || url.StartsWith("#"))
+                        {
+                            LogVerbose($"[{i + 1} of {urls.Length}] Skipping empty or commented URL");
                             continue;
+                        }
 
                         LogVerbose($"[{i + 1} of {urls.Length}] Processing URL: {url}");
 
-                        var releases = await ProcessReleaseHistoryUrl(url);
+                        var releases = ProcessReleaseHistoryUrl(url);
                         releaseInfoList.AddRange(releases);
 
-                        LogVerbose($"[{i + 1} of {urls.Length}] Retrieved {releases.Count} release records");
+                        LogVerbose($"[{i + 1} of {urls.Length}] Retrieved {releases.Count} release records from {url}");
+                        LogVerbose($"[{i + 1} of {urls.Length}] Total records so far: {releaseInfoList.Count}");
                     }
                     catch (Exception ex)
                     {
-                        LogWarning($"Failed to process URL {urls[i]}: {ex.Message}");
-                        
+                        LogWarning($"[{i + 1} of {urls.Length}] Failed to process URL {urls[i]}: {ex.Message}");
+
                         if (!_continueOnError)
                             throw;
                     }
+
+                    LogVerbose($"[{i + 1} of {urls.Length}] Completed processing URL {i + 1}");
                 }
 
                 LogVerbose($"Successfully retrieved {releaseInfoList.Count} total release records");
-
-                // If no data was retrieved, provide sample data for testing
-                if (releaseInfoList.Count == 0)
-                {
-                    LogVerbose("No release data retrieved from Microsoft sources, providing sample data for testing...");
-                    releaseInfoList.AddRange(GetSampleReleaseData());
-                }
             }
             catch (Exception ex)
             {
                 LogError($"Failed to fetch Windows release history: {ex.Message}", ex);
 
                 if (!_continueOnError)
-                {
-                    // Provide sample data even on error if continue on error is disabled
-                    LogVerbose("Providing sample release data due to connection issues...");
-                    return GetSampleReleaseData();
-                }
+                    throw;
             }
 
             return releaseInfoList;
@@ -148,7 +127,7 @@ namespace PSWindowsImageTools.Services
         /// <summary>
         /// Processes a single release history URL
         /// </summary>
-        private async Task<List<WindowsReleaseInfo>> ProcessReleaseHistoryUrl(string url)
+        private List<WindowsReleaseInfo> ProcessReleaseHistoryUrl(string url)
         {
             var releaseInfoList = new List<WindowsReleaseInfo>();
 
@@ -156,7 +135,7 @@ namespace PSWindowsImageTools.Services
             {
                 // Load the HTML document
                 var web = new HtmlWeb();
-                var doc = await web.LoadFromWebAsync(url);
+                var doc = web.Load(url);
 
                 // Determine regex patterns based on URL
                 var isServerUrl = url.IndexOf("Server", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -239,7 +218,7 @@ namespace PSWindowsImageTools.Services
                 {
                     OperatingSystem = operatingSystem,
                     Type = isServerUrl ? "Server" : "Client",
-                    ReleaseId = isServerUrl
+                    ReleaseID = isServerUrl
                         ? Regex.Match(operatingSystem, @"\d{4}").Value
                         : osInfoMatch.Groups["ReleaseID"].Value,
                     InitialReleaseVersion = new Version(10, 0, buildNumber, 0)
@@ -261,6 +240,9 @@ namespace PSWindowsImageTools.Services
                             s.IndexOf("LTSB", StringComparison.OrdinalIgnoreCase) >= 0 ||
                             s.IndexOf("Long Term", StringComparison.OrdinalIgnoreCase) >= 0));
                 }
+
+                // Mark the latest release
+                MarkLatestRelease(releaseInfo);
 
                 return releaseInfo;
             }
@@ -358,7 +340,11 @@ namespace PSWindowsImageTools.Services
 
                             var linkNode = cells[i].SelectSingleNode(".//a");
                             if (linkNode != null)
-                                release.KBArticleURL = linkNode.GetAttributeValue("href", "");
+                            {
+                                var href = linkNode.GetAttributeValue("href", "");
+                                if (!string.IsNullOrEmpty(href) && Uri.TryCreate(href, UriKind.Absolute, out var uri))
+                                    release.KBArticleURL = uri;
+                            }
                             break;
 
                         case var servicingHeader when servicingHeader.IndexOf("servicing", StringComparison.OrdinalIgnoreCase) >= 0:
@@ -383,94 +369,74 @@ namespace PSWindowsImageTools.Services
             }
         }
 
+
+
         /// <summary>
-        /// Provides sample Windows release data for testing when Microsoft sources are not accessible
+        /// Marks the latest release in the collection based on availability date
         /// </summary>
-        private static List<WindowsReleaseInfo> GetSampleReleaseData()
+        private static void MarkLatestRelease(WindowsReleaseInfo releaseInfo)
         {
-            return new List<WindowsReleaseInfo>
+            if (releaseInfo?.Releases == null || releaseInfo.Releases.Length == 0)
+                return;
+
+            // Find the latest release by availability date
+            var latestRelease = releaseInfo.Releases.OrderByDescending(r => r.AvailabilityDate).FirstOrDefault();
+
+            if (latestRelease != null)
             {
-                new WindowsReleaseInfo
+                // Mark all releases as not latest first
+                foreach (var release in releaseInfo.Releases)
                 {
-                    OperatingSystem = "Windows 11",
-                    Type = "Client",
-                    ReleaseId = "23H2",
-                    InitialReleaseVersion = new Version(10, 0, 22631, 0),
-                    HasLongTermServicingBuild = false,
-                    Releases = new[]
-                    {
-                        new WindowsRelease
-                        {
-                            Version = new Version(10, 0, 22631, 2428),
-                            AvailabilityDate = new DateTime(2023, 11, 14),
-                            KBArticle = "KB5032190",
-                            KBArticleURL = "https://support.microsoft.com/kb/5032190",
-                            ServicingOptions = new[] { "General Availability Channel" }
-                        },
-                        new WindowsRelease
-                        {
-                            Version = new Version(10, 0, 22631, 2715),
-                            AvailabilityDate = new DateTime(2023, 12, 12),
-                            KBArticle = "KB5033375",
-                            KBArticleURL = "https://support.microsoft.com/kb/5033375",
-                            ServicingOptions = new[] { "General Availability Channel" }
-                        }
-                    }
-                },
-                new WindowsReleaseInfo
-                {
-                    OperatingSystem = "Windows 11",
-                    Type = "Client",
-                    ReleaseId = "22H2",
-                    InitialReleaseVersion = new Version(10, 0, 22621, 0),
-                    HasLongTermServicingBuild = false,
-                    Releases = new[]
-                    {
-                        new WindowsRelease
-                        {
-                            Version = new Version(10, 0, 22621, 2428),
-                            AvailabilityDate = new DateTime(2023, 10, 10),
-                            KBArticle = "KB5031354",
-                            KBArticleURL = "https://support.microsoft.com/kb/5031354",
-                            ServicingOptions = new[] { "General Availability Channel" }
-                        }
-                    }
-                },
-                new WindowsReleaseInfo
-                {
-                    OperatingSystem = "Windows 10",
-                    Type = "Client",
-                    ReleaseId = "22H2",
-                    InitialReleaseVersion = new Version(10, 0, 19045, 0),
-                    HasLongTermServicingBuild = false,
-                    Releases = new[]
-                    {
-                        new WindowsRelease
-                        {
-                            Version = new Version(10, 0, 19045, 3693),
-                            AvailabilityDate = new DateTime(2023, 11, 14),
-                            KBArticle = "KB5032189",
-                            KBArticleURL = "https://support.microsoft.com/kb/5032189",
-                            ServicingOptions = new[] { "General Availability Channel" }
-                        }
-                    }
+                    release.IsLatest = false;
                 }
-            };
+
+                // Mark the latest one
+                latestRelease.IsLatest = true;
+            }
         }
 
         private void LogVerbose(string message)
         {
-            LoggingService.WriteVerbose(_cmdlet, message);
+            // Only log verbose messages directly since they don't cause threading issues
+            if (_cmdlet != null)
+            {
+                try
+                {
+                    LoggingService.WriteVerbose(_cmdlet, message);
+                }
+                catch
+                {
+                    // Ignore threading issues with verbose logging
+                }
+            }
         }
 
         private void LogWarning(string message)
         {
-            LoggingService.WriteWarning(_cmdlet, "WindowsReleaseHistory", message);
+            _warnings.Add(message);
         }
 
         private void LogError(string message, Exception? exception = null)
         {
-            LoggingService.WriteError(_cmdlet, "WindowsReleaseHistory", message, exception);
+            _errors.Add((message, exception));
+        }
+
+        /// <summary>
+        /// Writes collected warnings and errors to the cmdlet (must be called from main thread)
+        /// </summary>
+        public void WriteCollectedMessages()
+        {
+            if (_cmdlet == null) return;
+
+            foreach (var warning in _warnings)
+            {
+                LoggingService.WriteWarning(_cmdlet, "WindowsReleaseHistory", warning);
+            }
+
+            foreach (var (message, exception) in _errors)
+            {
+                LoggingService.WriteError(_cmdlet, "WindowsReleaseHistory", message, exception);
+            }
         }
     }
 }
