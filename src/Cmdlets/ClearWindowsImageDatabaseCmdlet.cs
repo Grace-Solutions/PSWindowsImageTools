@@ -66,7 +66,7 @@ namespace PSWindowsImageTools.Cmdlets
                 }
 
                 // Get record counts before clearing
-                int buildsCount = 0, updatesCount = 0, downloadsCount = 0, eventsCount = 0;
+                int buildsCount = 0, updatesCount = 0, imagesCount = 0, operationsCount = 0, inventoryCount = 0;
                 
                 try
                 {
@@ -77,15 +77,17 @@ namespace PSWindowsImageTools.Cmdlets
                             // Get current record counts
                             var buildsTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Builds");
                             var updatesTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Updates");
-                            var downloadsTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Downloads");
-                            var eventsTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM BuildProcessingEvents");
+                            var imagesTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Images");
+                            var operationsTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Operations");
+                            var inventoryTable = dbService.ExecuteQuery("SELECT COUNT(*) as Count FROM Inventory");
 
                             if (buildsTable.Rows.Count > 0) buildsCount = Convert.ToInt32(buildsTable.Rows[0]["Count"]);
                             if (updatesTable.Rows.Count > 0) updatesCount = Convert.ToInt32(updatesTable.Rows[0]["Count"]);
-                            if (downloadsTable.Rows.Count > 0) downloadsCount = Convert.ToInt32(downloadsTable.Rows[0]["Count"]);
-                            if (eventsTable.Rows.Count > 0) eventsCount = Convert.ToInt32(eventsTable.Rows[0]["Count"]);
+                            if (imagesTable.Rows.Count > 0) imagesCount = Convert.ToInt32(imagesTable.Rows[0]["Count"]);
+                            if (operationsTable.Rows.Count > 0) operationsCount = Convert.ToInt32(operationsTable.Rows[0]["Count"]);
+                            if (inventoryTable.Rows.Count > 0) inventoryCount = Convert.ToInt32(inventoryTable.Rows[0]["Count"]);
 
-                            LoggingService.WriteVerbose(this, $"Current record counts - Builds: {buildsCount}, Updates: {updatesCount}, Downloads: {downloadsCount}, Events: {eventsCount}");
+                            LoggingService.WriteVerbose(this, $"Current record counts - Builds: {buildsCount}, Updates: {updatesCount}, Images: {imagesCount}, Operations: {operationsCount}, Inventory: {inventoryCount}");
                         }
                     }
                 }
@@ -117,17 +119,19 @@ namespace PSWindowsImageTools.Cmdlets
                 }
 
                 var duration = DateTime.UtcNow - startTime;
-                LoggingService.LogOperationComplete(this, "ClearDatabase", duration, 
-                    $"Cleared {buildsCount + updatesCount + downloadsCount + eventsCount} total records");
+                var totalRecords = buildsCount + updatesCount + imagesCount + operationsCount + inventoryCount;
+                LoggingService.LogOperationComplete(this, "ClearDatabase", duration,
+                    $"Cleared {totalRecords} total records");
 
                 // Report results
                 WriteObject("Database cleared successfully.");
                 WriteObject($"Records removed:");
                 WriteObject($"  Builds: {buildsCount}");
                 WriteObject($"  Updates: {updatesCount}");
-                WriteObject($"  Downloads: {downloadsCount}");
-                WriteObject($"  Processing Events: {eventsCount}");
-                WriteObject($"  Total: {buildsCount + updatesCount + downloadsCount + eventsCount}");
+                WriteObject($"  Images: {imagesCount}");
+                WriteObject($"  Operations: {operationsCount}");
+                WriteObject($"  Inventory: {inventoryCount}");
+                WriteObject($"  Total: {totalRecords}");
                 WriteObject($"Operation completed in {duration.TotalMilliseconds:F0}ms");
             }
             catch (Exception ex)

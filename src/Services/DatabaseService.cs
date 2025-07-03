@@ -118,12 +118,121 @@ namespace PSWindowsImageTools.Services
                 command.ExecuteNonQuery();
             }
 
+            // Create Updates table (for Search-WindowsImageDatabase compatibility)
+            var createUpdatesTable = @"
+                CREATE TABLE IF NOT EXISTS Updates (
+                    UpdateId TEXT PRIMARY KEY,
+                    Title TEXT NOT NULL,
+                    KBNumber TEXT,
+                    Classification TEXT,
+                    Architecture TEXT,
+                    LastUpdated TEXT,
+                    SizeInBytes INTEGER,
+                    SearchQuery TEXT,
+                    UpdateData TEXT NOT NULL,
+                    DatabaseTimestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                )";
+
+            using (var command = new SQLiteCommand(createUpdatesTable, connection))
+            {
+                command.ExecuteNonQuery();
+            }
+
+            // Create Images table
+            var createImagesTable = @"
+                CREATE TABLE IF NOT EXISTS Images (
+                    Id TEXT PRIMARY KEY,
+                    SourcePath TEXT NOT NULL,
+                    ImageIndex INTEGER NOT NULL,
+                    ImageName TEXT NOT NULL,
+                    Edition TEXT,
+                    Architecture TEXT,
+                    Version TEXT,
+                    Build TEXT,
+                    Language TEXT,
+                    Size INTEGER,
+                    SourceHash TEXT,
+                    ProcessedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    AdvancedInfo TEXT,
+                    DatabaseTimestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                )";
+
+            using (var command = new SQLiteCommand(createImagesTable, connection))
+            {
+                command.ExecuteNonQuery();
+            }
+
+            // Create Operations table
+            var createOperationsTable = @"
+                CREATE TABLE IF NOT EXISTS Operations (
+                    Id TEXT PRIMARY KEY,
+                    OperationType TEXT NOT NULL,
+                    OperationName TEXT NOT NULL,
+                    Status TEXT NOT NULL,
+                    StartTime DATETIME NOT NULL,
+                    EndTime DATETIME,
+                    Duration INTEGER,
+                    ErrorMessage TEXT,
+                    Details TEXT,
+                    DatabaseTimestamp TEXT DEFAULT CURRENT_TIMESTAMP
+                )";
+
+            using (var command = new SQLiteCommand(createOperationsTable, connection))
+            {
+                command.ExecuteNonQuery();
+            }
+
+            // Create Inventory table
+            var createInventoryTable = @"
+                CREATE TABLE IF NOT EXISTS Inventory (
+                    Id TEXT PRIMARY KEY,
+                    ImageId TEXT,
+                    ItemType TEXT NOT NULL,
+                    ItemName TEXT NOT NULL,
+                    ItemVersion TEXT,
+                    ItemPath TEXT,
+                    ItemSize INTEGER,
+                    ItemHash TEXT,
+                    Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    Details TEXT,
+                    DatabaseTimestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ImageId) REFERENCES Images(Id)
+                )";
+
+            using (var command = new SQLiteCommand(createInventoryTable, connection))
+            {
+                command.ExecuteNonQuery();
+            }
+
             // Create indexes
             var indexes = new[]
             {
+                // Builds table indexes
                 "CREATE INDEX IF NOT EXISTS idx_builds_status ON Builds(Status)",
                 "CREATE INDEX IF NOT EXISTS idx_builds_created ON Builds(CreatedUtc)",
-                "CREATE INDEX IF NOT EXISTS idx_builds_hash ON Builds(SourceImageHash)"
+                "CREATE INDEX IF NOT EXISTS idx_builds_hash ON Builds(SourceImageHash)",
+
+                // Updates table indexes
+                "CREATE INDEX IF NOT EXISTS idx_updates_kbnumber ON Updates(KBNumber)",
+                "CREATE INDEX IF NOT EXISTS idx_updates_classification ON Updates(Classification)",
+                "CREATE INDEX IF NOT EXISTS idx_updates_architecture ON Updates(Architecture)",
+                "CREATE INDEX IF NOT EXISTS idx_updates_title ON Updates(Title)",
+
+                // Images table indexes
+                "CREATE INDEX IF NOT EXISTS idx_images_sourcepath ON Images(SourcePath)",
+                "CREATE INDEX IF NOT EXISTS idx_images_architecture ON Images(Architecture)",
+                "CREATE INDEX IF NOT EXISTS idx_images_edition ON Images(Edition)",
+                "CREATE INDEX IF NOT EXISTS idx_images_processed ON Images(ProcessedAt)",
+
+                // Operations table indexes
+                "CREATE INDEX IF NOT EXISTS idx_operations_type ON Operations(OperationType)",
+                "CREATE INDEX IF NOT EXISTS idx_operations_status ON Operations(Status)",
+                "CREATE INDEX IF NOT EXISTS idx_operations_starttime ON Operations(StartTime)",
+
+                // Inventory table indexes
+                "CREATE INDEX IF NOT EXISTS idx_inventory_imageid ON Inventory(ImageId)",
+                "CREATE INDEX IF NOT EXISTS idx_inventory_itemtype ON Inventory(ItemType)",
+                "CREATE INDEX IF NOT EXISTS idx_inventory_timestamp ON Inventory(Timestamp)"
             };
 
             foreach (var indexSql in indexes)
@@ -141,9 +250,23 @@ namespace PSWindowsImageTools.Services
         public void ClearAllData()
         {
             var connection = GetConnection();
-            using (var command = new SQLiteCommand("DELETE FROM Builds", connection))
+
+            // Clear all tables in reverse dependency order
+            var clearCommands = new[]
             {
-                command.ExecuteNonQuery();
+                "DELETE FROM Inventory",
+                "DELETE FROM Operations",
+                "DELETE FROM Images",
+                "DELETE FROM Updates",
+                "DELETE FROM Builds"
+            };
+
+            foreach (var sql in clearCommands)
+            {
+                using (var command = new SQLiteCommand(sql, connection))
+                {
+                    command.ExecuteNonQuery();
+                }
             }
         }
 
