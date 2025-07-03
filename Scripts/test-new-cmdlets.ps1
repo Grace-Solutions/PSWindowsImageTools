@@ -64,7 +64,7 @@ Install-WindowsUpdateFile -UpdatePath "C:\Updates\*.cab" -ImagePath "C:\Mount\Im
 Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' | 
     Get-WindowsUpdateDownloadUrl | 
     Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" | 
-    ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" }
+    ForEach-Object { Install-WindowsImageUpdate -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" }
 "@ -ForegroundColor White
 
 Write-Host "`n🛠️ Add-SetupCompleteAction Usage Examples:" -ForegroundColor Cyan
@@ -103,7 +103,7 @@ Write-Host @"
    Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architecture x64 |
        Get-WindowsUpdateDownloadUrl |
        Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" |
-       ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" -ValidateImage }
+       ForEach-Object { Install-WindowsImageUpdate -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" -ValidateImage }
 
 3. Add Custom SetupComplete Actions:
    # Copy deployment tools

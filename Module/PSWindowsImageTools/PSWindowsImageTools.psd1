@@ -61,14 +61,12 @@
         'Get-PatchTuesday',
         'Save-WindowsUpdateCatalogResult',
         'Install-WindowsImageUpdate',
-        'Install-WindowsUpdateFile',
 
         # Windows Release Information
         'Get-WindowsReleaseInfo',
 
         # Image Customization
         'Add-SetupCompleteAction',
-        'Install-WindowsUpdateFile',
         'Reset-WindowsImageBase',
 
         # Driver Management

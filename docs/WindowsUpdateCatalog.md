@@ -9,8 +9,7 @@ PSWindowsImageTools provides comprehensive Windows Update Catalog integration th
 - `Search-WindowsUpdateCatalog` - Search for updates in the catalog
 - `Get-WindowsUpdateDownloadUrl` - Extract download URLs from catalog results
 - `Save-WindowsUpdateCatalogResult` - Download update files with resume capability
-- `Install-WindowsUpdateFile` - Install CAB/MSU files into mounted images
-- `Install-WindowsImageUpdate` - Install updates from pipeline into mounted images
+- `Install-WindowsImageUpdate` - Unified cmdlet for installing updates (supports both file paths and pipeline objects)
 
 ## Windows Update Catalog API Behavior
 
@@ -183,8 +182,8 @@ $updates = Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architect
 $mountedImages = Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount"
 
 # 3. Install updates
-$updates | ForEach-Object { 
-    Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath $mountedImages[0].MountPath -ValidateImage 
+$updates | ForEach-Object {
+    Install-WindowsImageUpdate -UpdatePath $_.LocalFile -ImagePath $mountedImages[0].MountPath -ValidateImage
 }
 
 # 4. Add custom setup actions

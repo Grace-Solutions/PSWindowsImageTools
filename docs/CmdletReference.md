@@ -80,20 +80,30 @@ $catalogResults | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" 
 - `Verify`: Verify file integrity after download
 - `Resume`: Resume interrupted downloads
 
-### Install-WindowsUpdateFile
-Install CAB/MSU files into mounted Windows images.
+### Install-WindowsImageUpdate
+Install Windows updates into mounted images. Supports both file paths and WindowsUpdatePackage objects.
 
 ```powershell
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1" [-ValidateImage] [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
+# Install from file paths
+Install-WindowsImageUpdate -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1" [-ValidateImage] [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
+
+# Install from pipeline (WindowsUpdatePackage objects)
+$mountedImages | Install-WindowsImageUpdate -UpdatePackages $packages [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
 ```
 
 **Parameters:**
-- `UpdatePath`: Path to update file(s) or directory
-- `ImagePath`: Path to mounted Windows image
-- `ValidateImage`: Validate image before installation
+- `UpdatePath`: Path to update file(s) or directory (FromFiles parameter set)
+- `ImagePath`: Path to mounted Windows image (FromFiles parameter set)
+- `MountedImages`: Mounted Windows images from Mount-WindowsImageList (FromPackages parameter set)
+- `UpdatePackages`: WindowsUpdatePackage objects from Save-WindowsUpdateCatalogResult (FromPackages parameter set)
+- `ValidateImage`: Validate image before installation (FromFiles only)
 - `IgnoreCheck`: Skip DISM applicability checks
 - `PreventPending`: Prevent prerequisite installation
 - `ContinueOnError`: Continue on individual failures
+
+**Output:**
+- FromFiles: Returns `WindowsImageUpdateResult[]` objects
+- FromPackages: Returns updated `MountedWindowsImage[]` objects for pipeline continuation
 
 ### Install-WindowsImageUpdate
 Install updates from pipeline into mounted images.
