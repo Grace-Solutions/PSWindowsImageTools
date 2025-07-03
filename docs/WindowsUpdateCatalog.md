@@ -1,196 +1,311 @@
 # Windows Update Catalog Integration
 
-This document describes how PSWindowsImageTools integrates with the Windows Update Catalog to search, download, and install Windows updates.
+PSWindowsImageTools provides comprehensive integration with the Microsoft Windows Update Catalog, enabling automated search, download, and installation of Windows updates with enterprise-grade features.
 
 ## Overview
 
-PSWindowsImageTools provides comprehensive Windows Update Catalog integration through several cmdlets:
+The Windows Update Catalog workflow consists of four main cmdlets that work seamlessly together:
 
-- `Search-WindowsUpdateCatalog` - Search for updates in the catalog
-- `Get-WindowsUpdateDownloadUrl` - Extract download URLs from catalog results
-- `Save-WindowsUpdateCatalogResult` - Download update files with resume capability
+- `Search-WindowsUpdateCatalog` - Search Microsoft Update Catalog with advanced filtering
+- `Get-WindowsUpdateDownloadUrl` - Extract download URLs from catalog results  
+- `Save-WindowsUpdateCatalogResult` - Download update files with resume capability and integrity verification
 - `Install-WindowsImageUpdate` - Unified cmdlet for installing updates (supports both file paths and pipeline objects)
+
+## Key Features
+
+### 🔍 **Advanced Search Capabilities**
+- Architecture filtering (x86, x64, arm64)
+- Product-specific filtering
+- Date range filtering (Before/After)
+- Result limiting and pagination
+- Intelligent parsing of Microsoft's catalog
+
+### 📦 **Robust Download Management**
+- Resume interrupted downloads automatically
+- Integrity verification with checksums
+- Progress reporting with size formatting
+- Batch download with statistics
+- Error handling and retry logic
+
+### 🛠️ **Flexible Installation Options**
+- File-based installation for traditional workflows
+- Pipeline-based installation for automation
+- DISM API integration for reliability
+- Progress tracking and error handling
+- Support for both CAB and MSU files
 
 ## Windows Update Catalog API Behavior
 
-### Important Limitations
+**Important**: The Windows Update Catalog API returns ALL results without server-side filtering. All filtering (architecture, product, date) is performed client-side after parsing the results. This design ensures maximum compatibility and reliability.
 
-The Windows Update Catalog API has specific behaviors that affect how we implement search and filtering:
+## Complete Workflow Examples
 
-1. **No Server-Side Filtering**: The API returns all results without server-side filtering capability
-2. **Client-Side Processing Required**: All filtering must be done client-side after parsing results
-3. **Large Result Sets**: Searches can return hundreds of results that need local processing
-
-### Search Implementation
+### Basic Update Search and Download
 
 ```powershell
-# Basic search - returns all matching results
-Search-WindowsUpdateCatalog -Query 'Windows 11'
+# Search for Windows 11 cumulative updates
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 -MaxResults 5
 
-# Filtered search - client-side filtering applied
-Search-WindowsUpdateCatalog -Query 'Windows 11' -Architecture x64 -MaxResults 10
+# Get download URLs
+$downloadInfo = $updates | Get-WindowsUpdateDownloadUrl
 
-# Product-specific search
-Search-WindowsUpdateCatalog -Query 'Cumulative' -Products 'Windows 11'
+# Download files with resume capability
+$packages = $downloadInfo | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Resume -VerifyIntegrity
+
+# Display results
+$packages | Format-Table Title, KBNumber, SizeFormatted, LocalFile
 ```
 
-## Catalog Parsing Specification
-
-The Windows Update Catalog parsing follows the specification documented at:
-https://github.com/Grace-Solutions/WindowsUpdateCatalogScraper/blob/main/docs/WindowsUpdateCatalogScrapingGuide.md
-
-### Key Parsing Elements
-
-1. **Update Identification**
-   - UpdateId (GUID)
-   - KB Number extraction
-   - Title parsing
-
-2. **Metadata Extraction**
-   - Product information
-   - Architecture detection
-   - Language support
-   - File sizes
-
-3. **Download URL Processing**
-   - Multiple download URLs per update
-   - URL validation and accessibility
-   - File naming conventions
-
-## Download Process
-
-### Resume Capability
-
-The `Save-WindowsUpdateCatalogResult` cmdlet supports download resume:
+### Enterprise Deployment Pipeline
 
 ```powershell
-# Download with automatic resume on failure
-$packages = Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' |
+# 1. Search for latest security updates
+$securityUpdates = Search-WindowsUpdateCatalog -Query "Security Update" -Architecture x64 -After (Get-Date).AddDays(-30) |
+    Where-Object { $_.Classification -eq "Security Updates" } |
+    Sort-Object LastModified -Descending |
+    Select-Object -First 10
+
+# 2. Download updates
+$packages = $securityUpdates | 
+    Get-WindowsUpdateDownloadUrl | 
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\SecurityUpdates" -Resume
+
+# 3. Mount images and install updates
+$images = Get-WindowsImageList -ImagePath "install.wim" | Where-Object { $_.ImageName -like "*Enterprise*" }
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+
+# 4. Install updates using pipeline
+$mounted | Install-WindowsImageUpdate -UpdatePackages $packages -ContinueOnError
+
+# 5. Save and dismount
+$mounted | Dismount-WindowsImageList -Save
+```
+
+### Patch Tuesday Automation
+
+```powershell
+# Calculate next Patch Tuesday
+$nextPatchTuesday = Get-PatchTuesday -Next
+
+# Search for updates released on Patch Tuesday
+$patchTuesdayUpdates = Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 |
+    Where-Object { $_.LastModified.Date -eq $nextPatchTuesday.Date }
+
+# Download to organized folder structure
+$packages = $patchTuesdayUpdates |
+    Get-WindowsUpdateDownloadUrl |
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\PatchTuesday\$($nextPatchTuesday.Date.ToString('yyyy-MM'))"
+
+Write-Output "Downloaded $($packages.Count) updates for Patch Tuesday: $($nextPatchTuesday.Date.ToString('MMMM dd, yyyy'))"
+```
+
+### Product-Specific Updates
+
+```powershell
+# Search for Windows Server 2022 updates
+$serverUpdates = Search-WindowsUpdateCatalog -Query "Windows Server 2022" -Architecture x64 -ProductFilter "Windows Server 2022"
+
+# Search for Office updates
+$officeUpdates = Search-WindowsUpdateCatalog -Query "Microsoft Office" -ProductFilter "Microsoft Office"
+
+# Search for .NET Framework updates
+$dotnetUpdates = Search-WindowsUpdateCatalog -Query ".NET Framework" -ProductFilter ".NET Framework"
+```
+
+## Advanced Filtering Techniques
+
+### Date-Based Filtering
+
+```powershell
+# Updates from the last 30 days
+$recent = Search-WindowsUpdateCatalog -Query "Windows 11" -After (Get-Date).AddDays(-30)
+
+# Updates before a specific date
+$older = Search-WindowsUpdateCatalog -Query "Windows 10" -Before (Get-Date "2024-01-01")
+
+# Updates from a specific month
+$january = Search-WindowsUpdateCatalog -Query "Cumulative" -After (Get-Date "2024-01-01") -Before (Get-Date "2024-02-01")
+```
+
+### Architecture and Product Filtering
+
+```powershell
+# ARM64 updates only
+$armUpdates = Search-WindowsUpdateCatalog -Query "Windows 11" -Architecture arm64
+
+# Multiple product filtering
+$multiProduct = Search-WindowsUpdateCatalog -Query "Security" -ProductFilter @("Windows 11", "Windows Server 2022")
+
+# Exclude specific products using Where-Object
+$filtered = Search-WindowsUpdateCatalog -Query "Update" |
+    Where-Object { $_.Products -notcontains "Windows 10" }
+```
+
+## Download Management
+
+### Resume and Integrity Features
+
+```powershell
+# Download with all safety features
+$packages = $downloadInfo | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Resume -VerifyIntegrity
+
+# Monitor download progress
+$packages = $downloadInfo | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Verbose
+
+# Handle download failures gracefully
+try {
+    $packages = $downloadInfo | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Resume
+    Write-Output "Successfully downloaded $($packages.Count) packages"
+} catch {
+    Write-Warning "Download failed: $($_.Exception.Message)"
+    # Retry logic here
+}
+```
+
+### Batch Download Statistics
+
+```powershell
+# Download multiple update sets
+$cumulativeUpdates = Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 -MaxResults 5
+$securityUpdates = Search-WindowsUpdateCatalog -Query "Security" -Architecture x64 -MaxResults 5
+
+# Combine and download
+$allUpdates = $cumulativeUpdates + $securityUpdates
+$packages = $allUpdates | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\AllUpdates"
+
+# Display statistics
+Write-Output "Downloaded packages:"
+Write-Output "  Cumulative Updates: $($packages | Where-Object { $_.Title -like "*Cumulative*" } | Measure-Object).Count"
+Write-Output "  Security Updates: $($packages | Where-Object { $_.Title -like "*Security*" } | Measure-Object).Count"
+Write-Output "  Total Size: $((($packages | Measure-Object -Property Size -Sum).Sum / 1GB).ToString('F2')) GB"
+```
+
+## Installation Methods
+
+### File-Based Installation (Traditional)
+
+```powershell
+# Install from downloaded files
+$updateFiles = Get-ChildItem "C:\Updates" -Filter "*.msu"
+foreach ($file in $updateFiles) {
+    Install-WindowsImageUpdate -UpdatePath $file -ImagePath "C:\Mount\Image1" -ValidateImage -ContinueOnError
+}
+```
+
+### Pipeline-Based Installation (Modern)
+
+```powershell
+# Complete pipeline workflow
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 -MaxResults 3 |
     Get-WindowsUpdateDownloadUrl |
     Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+
+$mounted = Get-WindowsImageList -ImagePath "install.wim" | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+$updatedImages = $mounted | Install-WindowsImageUpdate -UpdatePackages $updates -IgnoreCheck
+$updatedImages | Dismount-WindowsImageList -Save
 ```
 
-### Progress Tracking
+## Error Handling and Best Practices
 
-Downloads include comprehensive progress tracking:
-- Individual file progress
-- Overall batch progress
-- Size-aware progress reporting
-- Intelligent unit formatting (B, KB, MB, GB, TB)
-
-### Database Integration
-
-When database functionality is enabled, all download operations are automatically tracked:
+### Robust Error Handling
 
 ```powershell
-# Configure database
-Set-WindowsImageDatabaseConfiguration -Path "C:\Database\updates.db"
+try {
+    # Search with error handling
+    $updates = Search-WindowsUpdateCatalog -Query "Windows 11" -Architecture x64 -MaxResults 10
+    
+    if ($updates.Count -eq 0) {
+        Write-Warning "No updates found matching criteria"
+        return
+    }
+    
+    # Download with retry logic
+    $packages = $updates | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Resume
+    
+    # Validate downloads
+    $failedDownloads = $packages | Where-Object { -not $_.LocalFile.Exists }
+    if ($failedDownloads) {
+        Write-Warning "$($failedDownloads.Count) downloads failed"
+        $failedDownloads | ForEach-Object { Write-Warning "Failed: $($_.Title)" }
+    }
+    
+} catch {
+    Write-Error "Update workflow failed: $($_.Exception.Message)"
+    # Cleanup logic here
+}
+```
+
+### Performance Optimization
+
+```powershell
+# Use MaxResults to limit large searches
+$updates = Search-WindowsUpdateCatalog -Query "Update" -MaxResults 50
+
+# Filter early to reduce processing
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11" -Architecture x64 |
+    Where-Object { $_.LastModified -gt (Get-Date).AddDays(-7) } |
+    Select-Object -First 10
+
+# Batch operations for efficiency
+$allUpdates = @()
+$allUpdates += Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 -MaxResults 5
+$allUpdates += Search-WindowsUpdateCatalog -Query "Security" -Architecture x64 -MaxResults 5
+$packages = $allUpdates | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+```
+
+## Integration with Other Cmdlets
+
+### Windows Release Information
+
+```powershell
+# Get latest release info and corresponding updates
+$latestRelease = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest
+$updates = Search-WindowsUpdateCatalog -Query $latestRelease.LatestKBArticle -Architecture x64
+```
+
+### Database Tracking
+
+```powershell
+# Setup database tracking
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
 New-WindowsImageDatabase
 
-# Downloads are automatically logged to database
-$packages = Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" $catalogResults
-```
-
-## Update Installation
-
-### Direct File Installation
-
-Install CAB/MSU files directly into mounted images:
-
-```powershell
-# Install single update
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1"
-
-# Install multiple updates from directory
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\" -ImagePath "C:\Mount\Image1" -ContinueOnError
-
-# Install with validation
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\*.cab" -ImagePath "C:\Mount\Image1" -ValidateImage
-```
-
-### Pipeline Installation
-
-Install updates from the download pipeline:
-
-```powershell
-# Complete workflow: Search → Download → Install
-Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architecture x64 |
-    Get-WindowsUpdateDownloadUrl |
-    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" |
-    ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" }
-```
-
-### Boot Image Updates
-
-Boot images can be updated using the same process:
-
-```powershell
-# Mount boot image
-Mount-WindowsImageList -ImagePath "boot.wim" -Index 2 -MountPath "C:\Mount\Boot"
-
-# Install cumulative update into boot image
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Boot" -ValidateImage
-
-# Dismount and save
-Dismount-WindowsImageList -MountPath "C:\Mount\Boot" -Save
-```
-
-## Error Handling
-
-### Common Issues
-
-1. **Network Connectivity**: Download failures due to network issues
-2. **Disk Space**: Insufficient space for large updates
-3. **File Corruption**: Incomplete downloads or corrupted files
-4. **DISM Errors**: Update installation failures
-
-### Mitigation Strategies
-
-1. **Resume Downloads**: Automatic resume on network failures
-2. **Space Validation**: Pre-download space checking
-3. **File Verification**: SHA256 hash validation (when available)
-4. **Error Continuation**: ContinueOnError parameter for batch operations
-
-## Performance Considerations
-
-### Large Update Sets
-
-When processing large numbers of updates:
-
-1. Use `-MaxResults` to limit initial search results
-2. Enable database tracking for progress monitoring
-3. Use `-ContinueOnError` for resilient batch processing
-4. Monitor disk space during downloads
-
-### Network Optimization
-
-1. Downloads use HTTP range requests for resume capability
-2. Progress callbacks minimize UI blocking
-3. Parallel processing where appropriate
-
-## Integration Examples
-
-### Complete Image Customization
-
-```powershell
-# 1. Search and download updates
-$updates = Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architecture x64 -MaxResults 5 |
+# All operations will be automatically tracked
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11" -Architecture x64 |
     Get-WindowsUpdateDownloadUrl |
     Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
 
-# 2. Mount image
-$mountedImages = Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount"
-
-# 3. Install updates
-$updates | ForEach-Object {
-    Install-WindowsImageUpdate -UpdatePath $_.LocalFile -ImagePath $mountedImages[0].MountPath -ValidateImage
-}
-
-# 4. Add custom setup actions
-Add-SetupCompleteAction -ImagePath $mountedImages[0].MountPath -Command "echo Updates installed" -Description "Update confirmation"
-
-# 5. Dismount and save
-Dismount-WindowsImageList -MountPath $mountedImages[0].MountPath -Save
+# Query tracking history
+$recentDownloads = Search-WindowsImageDatabase -Operation "Download" -StartDate (Get-Date).AddDays(-7)
 ```
 
-This workflow provides complete Windows image customization with update integration and custom deployment actions.
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **No results returned**: Check query spelling and try broader search terms
+2. **Download failures**: Use `-Resume` parameter and check network connectivity
+3. **Installation failures**: Verify image is properly mounted and use `-ContinueOnError`
+4. **Performance issues**: Use `-MaxResults` to limit large searches
+
+### Debugging Commands
+
+```powershell
+# Enable verbose output
+$VerbosePreference = "Continue"
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11" -Verbose
+
+# Check download integrity
+$packages | Where-Object { $_.LocalFile.Exists } | ForEach-Object {
+    Write-Output "$($_.Title): $($_.LocalFile.Length) bytes"
+}
+
+# Validate mounted images before installation
+$mounted | ForEach-Object {
+    if ($_.Status -ne "Mounted") {
+        Write-Warning "Image $($_.ImageName) is not properly mounted"
+    }
+}
+```
+
+This comprehensive integration enables automated, reliable Windows update management for enterprise deployment scenarios.

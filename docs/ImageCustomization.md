@@ -1,267 +1,284 @@
-# Windows Image Customization
+# Windows Image Customization Guide
 
-This document describes the image customization capabilities of PSWindowsImageTools, including update installation and SetupComplete automation.
+PSWindowsImageTools provides comprehensive capabilities for customizing Windows images with drivers, registry settings, applications, and enterprise configurations.
 
 ## Overview
 
-PSWindowsImageTools provides comprehensive Windows image customization through:
+Image customization in PSWindowsImageTools follows a structured approach:
 
-- **Update Installation**: Direct installation of CAB/MSU files into mounted images
-- **SetupComplete Automation**: Custom actions during Windows first boot
-- **File Deployment**: Copying files and scripts into images
-- **Configuration Management**: Automated system configuration
+1. **Mount Images** - Prepare images for modification
+2. **Apply Customizations** - Install drivers, updates, configure settings
+3. **Enterprise Configuration** - Autopilot, registry, AppX management
+4. **Save Changes** - Commit modifications and dismount
 
-## Update Installation
+## Core Customization Workflow
 
-### Install-WindowsUpdateFile Cmdlet
-
-Install Windows updates (CAB/MSU files) directly into mounted Windows images.
-
-#### Basic Usage
+### Basic Image Preparation
 
 ```powershell
-# Install single update file
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1"
+# Mount image for customization
+$images = Get-WindowsImageList -ImagePath "install.wim" | Where-Object { $_.ImageName -like "*Enterprise*" }
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
 
-# Install multiple updates from directory
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\" -ImagePath "C:\Mount\Image1"
-
-# Install with error handling
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\*.cab" -ImagePath "C:\Mount\Image1" -ContinueOnError
+# Verify mount status
+$mounted | Where-Object { $_.Status -eq "Mounted" }
 ```
 
-#### Advanced Options
+### Driver Integration
 
 ```powershell
-# Install with validation and DISM options
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\" -ImagePath "C:\Mount\Image1" `
-    -ValidateImage `
-    -IgnoreCheck `
-    -PreventPending `
-    -ContinueOnError
+# Discover and install drivers
+$drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse -ParseHardwareIDs
+$mounted | Add-INFDriverList -Drivers $drivers
+
+# Install specific architecture drivers
+$x64Drivers = Get-INFDriverList -Path "C:\Drivers" -Architecture amd64 -ParseHardwareIDs
+$mounted | Add-INFDriverList -Drivers $x64Drivers -Force
 ```
 
-#### Parameters
-
-- **UpdatePath**: Path to update file(s) or directory containing updates
-- **ImagePath**: Path to mounted Windows image directory
-- **IgnoreCheck**: Prevents DISM from checking package applicability
-- **PreventPending**: Prevents automatic installation of prerequisite packages
-- **ContinueOnError**: Continues processing other updates if one fails
-- **ValidateImage**: Validates that the image is suitable for update integration
-
-#### Pipeline Integration
+### Windows Update Integration
 
 ```powershell
-# Complete workflow: Search → Download → Install
-Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architecture x64 |
+# Install latest cumulative updates
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 -MaxResults 3 |
     Get-WindowsUpdateDownloadUrl |
-    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" |
-    ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath "C:\Mount\Image1" }
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates -IgnoreCheck
 ```
 
-### Boot Image Support
+## Advanced Customization Features
 
-Boot images can be updated using the same process:
+### Registry Configuration
 
 ```powershell
-# Mount boot image
-Mount-WindowsImageList -ImagePath "boot.wim" -Index 2 -MountPath "C:\Mount\Boot"
+# Parse and apply registry settings
+$regOps = Get-RegistryOperationList -Path "C:\Config\enterprise-settings.reg" -ParseValues
+$mounted | Write-RegistryOperationList -Operations $regOps
 
-# Install updates
-Install-WindowsUpdateFile -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Boot"
+# Example registry operations for enterprise settings
+$enterpriseReg = @"
+Windows Registry Editor Version 5.00
 
-# Dismount and save
-Dismount-WindowsImageList -MountPath "C:\Mount\Boot" -Save
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate]
+"WUServer"="https://wsus.company.com"
+"WUStatusServer"="https://wsus.company.com"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU]
+"UseWUServer"=dword:00000001
+"@
+
+$enterpriseReg | Out-File "C:\Config\enterprise.reg" -Encoding ASCII
+$regOps = Get-RegistryOperationList -Path "C:\Config\enterprise.reg"
+$mounted | Write-RegistryOperationList -Operations $regOps
 ```
 
-## SetupComplete Automation
-
-### Add-SetupCompleteAction Cmdlet
-
-Add custom actions to SetupComplete.cmd that execute during Windows first boot.
-
-#### Basic Usage
+### AppX Package Management
 
 ```powershell
-# Add simple command
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" `
-    -Command "reg add HKLM\Software\MyApp /v Installed /t REG_SZ /d Yes" `
-    -Description "Register application"
+# Remove consumer applications
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire|Music|Video|News|Weather" -ExclusionFilter "Store|Calculator|Photos"
 
-# Add multiple commands
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" `
-    -Command @("net stop Themes", "reg add HKLM\...", "net start Themes") `
-    -Description "System configuration" `
-    -Priority 100
+# Remove all except essential apps
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter ".*" -ExclusionFilter "Store|Calculator|Photos|Mail|Calendar|Camera"
+
+# Remove gaming and entertainment with error handling
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Gaming|Solitaire" -ErrorAction Continue
 ```
 
-#### Script Execution
+### Autopilot Configuration
 
 ```powershell
-# Execute external script
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" `
-    -ScriptFile "C:\Scripts\post-install.cmd" `
-    -Description "Run post-installation script" `
-    -Priority 50 `
-    -ContinueOnError
+# Create Autopilot configuration
+$autopilot = New-AutopilotConfiguration -TenantId "12345678-1234-1234-1234-123456789012" -DeviceName "%SERIAL%" -ForcedEnrollment -UpdateTimeout 60
+
+# Apply to mounted images
+$mounted | Install-AutopilotConfiguration -Configuration $autopilot
+
+# Load existing configuration and modify
+$existingConfig = Get-AutopilotConfiguration -Path "C:\Config\autopilot.json"
+$modifiedConfig = Set-AutopilotConfiguration -Configuration $existingConfig -DeviceName "%COMPUTERNAME%" -UpdateTimeout 120
+$mounted | Install-AutopilotConfiguration -Configuration $modifiedConfig
 ```
 
-#### File Deployment
+### Custom Setup Actions
 
 ```powershell
-# Copy files and execute commands
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" `
-    -CopyFiles "C:\LocalFiles\config.xml", "C:\Tools\*" `
-    -CopyDestination "Temp\Deployment" `
-    -Command "copy C:\Temp\Deployment\config.xml C:\Program Files\MyApp\" `
-    -Description "Deploy configuration files" `
-    -Backup
+# Add first-boot scripts with priorities
+$mounted | Add-SetupCompleteAction -Command "powershell.exe -ExecutionPolicy Bypass -File C:\Scripts\domain-join.ps1" -Priority 10 -Description "Domain Join Script"
+
+$mounted | Add-SetupCompleteAction -ScriptFile "C:\Scripts\enterprise-config.cmd" -Priority 20 -Description "Enterprise Configuration"
+
+$mounted | Add-SetupCompleteAction -ScriptContent @"
+echo Configuring enterprise settings...
+reg add "HKLM\SOFTWARE\Company" /v "Configured" /t REG_SZ /d "True" /f
+echo Configuration complete
+"@ -Priority 30 -Description "Registry Configuration"
 ```
 
-#### Parameters
+## Enterprise Deployment Scenarios
 
-- **ImagePath**: Path to mounted Windows image directory
-- **Command**: Command(s) to execute during SetupComplete phase
-- **Description**: Description of the action for documentation
-- **Priority**: Execution order (lower numbers execute first, default: 100)
-- **ContinueOnError**: Continue execution if this action fails
-- **ScriptFile**: Path to script file to copy and execute
-- **CopyFiles**: Files/directories to copy to the image
-- **CopyDestination**: Destination path in image for copied files (relative to C:\)
-- **Backup**: Create backup of existing SetupComplete.cmd
-
-### Priority System
-
-Actions execute in priority order during Windows first boot:
+### Complete Enterprise Image
 
 ```powershell
-# Early initialization (Priority 10-50)
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" -Command "echo Starting setup..." -Priority 10
+# 1. Setup environment
+Install-ADK -Force
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
+New-WindowsImageDatabase
 
-# Application installation (Priority 50-100)
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" -ScriptFile "install-apps.cmd" -Priority 50
+# 2. Prepare base image
+$images = Get-WindowsImageList -ImagePath "install.wim" | Where-Object { $_.ImageName -like "*Enterprise*" }
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
 
-# System configuration (Priority 100-150)
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" -Command "reg add..." -Priority 100
+# 3. Install drivers
+$drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse -ParseHardwareIDs
+$mounted | Add-INFDriverList -Drivers $drivers
 
-# Final cleanup (Priority 200+)
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" -Command "del /q C:\Temp\*.tmp" -Priority 200
-```
-
-### Error Handling
-
-```powershell
-# Continue on error with logging
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" `
-    -Command "net start MyService" `
-    -Description "Start custom service" `
-    -ContinueOnError `
-    -Priority 150
-```
-
-This generates: `net start MyService || echo Warning: Command failed but continuing...`
-
-## Complete Customization Workflow
-
-### Enterprise Image Preparation
-
-```powershell
-# 1. Mount Windows Image
-$mountedImages = Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount\Enterprise"
-$imagePath = $mountedImages[0].MountPath
-
-# 2. Install Latest Updates
-Search-WindowsUpdateCatalog -Query 'Windows 11 Cumulative' -Architecture x64 -MaxResults 3 |
+# 4. Install updates
+$latestRelease = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest
+$updates = Search-WindowsUpdateCatalog -Query $latestRelease.LatestKBArticle -Architecture x64 |
     Get-WindowsUpdateDownloadUrl |
-    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" |
-    ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath $imagePath -ValidateImage }
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates
 
-# 3. Deploy Tools and Scripts
-Add-SetupCompleteAction -ImagePath $imagePath `
-    -CopyFiles "C:\DeploymentTools\*" `
-    -CopyDestination "Tools" `
-    -Command "echo Deployment tools copied" `
-    -Description "Deploy enterprise tools" `
-    -Priority 10
+# 5. Configure enterprise settings
+$regOps = Get-RegistryOperationList -Path "C:\Config\enterprise.reg" -ParseValues
+$mounted | Write-RegistryOperationList -Operations $regOps
 
-# 4. Install Applications
-Add-SetupCompleteAction -ImagePath $imagePath `
-    -ScriptFile "C:\Scripts\install-enterprise-apps.cmd" `
-    -Description "Install enterprise applications" `
-    -Priority 50 `
-    -ContinueOnError
+# 6. Remove consumer apps
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire|Music|Video" -ExclusionFilter "Store|Calculator"
 
-# 5. Configure System Settings
-Add-SetupCompleteAction -ImagePath $imagePath `
-    -Command @(
-        "reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate /v DoNotConnectToWindowsUpdateInternetLocations /t REG_DWORD /d 1",
-        "reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate /v DisableWindowsUpdateAccess /t REG_DWORD /d 1",
-        "powershell -File C:\Tools\configure-enterprise.ps1"
-    ) `
-    -Description "Apply enterprise policies" `
-    -Priority 100
+# 7. Configure Autopilot
+$autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%" -ForcedEnrollment
+$mounted | Install-AutopilotConfiguration -Configuration $autopilot
 
-# 6. Final Configuration
-Add-SetupCompleteAction -ImagePath $imagePath `
-    -Command "shutdown /r /t 60 /c 'Enterprise configuration complete. Restarting in 60 seconds.'" `
-    -Description "Restart after configuration" `
-    -Priority 200
+# 8. Add setup scripts
+$mounted | Add-SetupCompleteAction -ScriptFile "C:\Scripts\enterprise-setup.ps1" -Priority 10
 
-# 7. Dismount and Save
-Dismount-WindowsImageList -MountPath $imagePath -Save
+# 9. Save and cleanup
+$mounted | Dismount-WindowsImageList -Save
 ```
 
-### Generated SetupComplete.cmd
+### Multi-Edition Customization
 
-The above workflow generates a SetupComplete.cmd like:
+```powershell
+# Customize multiple editions with different configurations
+$allImages = Get-WindowsImageList -ImagePath "install.wim"
 
-```cmd
-REM === SetupComplete Action - Deploy enterprise tools (Priority: 10) ===
-REM Added on: 2025-06-27 16:41:21
-echo Deployment tools copied
-REM === End SetupComplete Action ===
+# Enterprise edition - full customization
+$enterprise = $allImages | Where-Object { $_.ImageName -like "*Enterprise*" } | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+$enterprise | Add-INFDriverList -Drivers $drivers
+$enterprise | Install-WindowsImageUpdate -UpdatePackages $updates
+$enterprise | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Gaming" -ExclusionFilter "Store"
+$enterprise | Install-AutopilotConfiguration -Configuration $autopilot
+$enterprise | Dismount-WindowsImageList -Save
 
-REM === SetupComplete Action - Install enterprise applications (Priority: 50) ===
-REM Added on: 2025-06-27 16:41:21
-call "C:\Tools/install-enterprise-apps.cmd" || echo Warning: Script failed but continuing...
-REM === End SetupComplete Action ===
+# Professional edition - basic customization
+$professional = $allImages | Where-Object { $_.ImageName -like "*Pro*" } | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+$professional | Add-INFDriverList -Drivers $drivers
+$professional | Install-WindowsImageUpdate -UpdatePackages $updates
+$professional | Dismount-WindowsImageList -Save
+```
 
-REM === SetupComplete Action - Apply enterprise policies (Priority: 100) ===
-REM Added on: 2025-06-27 16:41:21
-reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate /v DoNotConnectToWindowsUpdateInternetLocations /t REG_DWORD /d 1
-reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate /v DisableWindowsUpdateAccess /t REG_DWORD /d 1
-powershell -File C:\Tools\configure-enterprise.ps1
-REM === End SetupComplete Action ===
+### WinPE Boot Image Customization
 
-REM === SetupComplete Action - Restart after configuration (Priority: 200) ===
-REM Added on: 2025-06-27 16:41:21
-shutdown /r /t 60 /c "Enterprise configuration complete. Restarting in 60 seconds."
-REM === End SetupComplete Action ===
+```powershell
+# Customize WinPE boot image
+$adk = Get-ADKInstallation -Latest -RequireWinPE
+$components = Get-WinPEOptionalComponent -ADKInstallation $adk -Category "Scripting","Networking"
+
+$winpe = Get-WindowsImageList -ImagePath "boot.wim" | Mount-WindowsImageList -MountPath "C:\WinPE" -ReadWrite
+
+# Add PowerShell and networking support
+$psComponents = $components | Where-Object { $_.Name -like "*PowerShell*" -or $_.Name -like "*NetFx*" -or $_.Name -like "*WMI*" }
+$winpe | Add-WinPEOptionalComponent -Components $psComponents
+
+# Add custom drivers to WinPE
+$winpeDrivers = Get-INFDriverList -Path "C:\WinPE-Drivers" -Recurse
+$winpe | Add-INFDriverList -Drivers $winpeDrivers
+
+$winpe | Dismount-WindowsImageList -Save
 ```
 
 ## Best Practices
 
-### Update Installation
+### Error Handling and Validation
 
-1. **Always validate images** before installing updates
-2. **Use ContinueOnError** for batch operations
-3. **Install updates before** adding SetupComplete actions
-4. **Test with boot images** if they need updates
+```powershell
+# Validate image before customization
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+if ($mounted.Status -ne "Mounted") {
+    throw "Failed to mount image: $($mounted.ErrorMessage)"
+}
 
-### SetupComplete Actions
+# Use try-catch for critical operations
+try {
+    $mounted | Install-WindowsImageUpdate -UpdatePackages $updates -ContinueOnError
+} catch {
+    Write-Error "Update installation failed: $($_.Exception.Message)"
+    $mounted | Dismount-WindowsImageList -Discard
+    throw
+}
 
-1. **Use priority ordering** to control execution sequence
-2. **Include error handling** with ContinueOnError for non-critical actions
-3. **Document actions** with meaningful descriptions
-4. **Create backups** when modifying existing SetupComplete.cmd
-5. **Test scripts** before adding them to images
+# Validate customizations before saving
+$mounted | Add-SetupCompleteAction -Command "echo Validation complete" -Priority 999 -Description "Validation marker"
+$mounted | Dismount-WindowsImageList -Save
+```
 
-### File Management
+### Performance Optimization
 
-1. **Copy files to appropriate locations** (avoid system directories)
-2. **Use relative paths** in commands when possible
-3. **Clean up temporary files** with high-priority cleanup actions
-4. **Validate file permissions** after deployment
+```powershell
+# Batch operations for efficiency
+$allCustomizations = @{
+    Drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse
+    Updates = Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 -MaxResults 3 | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+    RegistryOps = Get-RegistryOperationList -Path "C:\Config\settings.reg"
+    Autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%"
+}
 
-This comprehensive customization system enables enterprise-grade Windows image preparation with automated deployment and configuration.
+# Apply all customizations in sequence
+$mounted | Add-INFDriverList -Drivers $allCustomizations.Drivers
+$mounted | Install-WindowsImageUpdate -UpdatePackages $allCustomizations.Updates
+$mounted | Write-RegistryOperationList -Operations $allCustomizations.RegistryOps
+$mounted | Install-AutopilotConfiguration -Configuration $allCustomizations.Autopilot
+```
+
+### Database Tracking
+
+```powershell
+# Enable operation tracking
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
+New-WindowsImageDatabase
+
+# All customization operations are automatically tracked
+# Query customization history
+$recentCustomizations = Search-WindowsImageDatabase -Operation "Customize" -StartDate (Get-Date).AddDays(-7)
+$recentCustomizations | Format-Table Operation, ImageName, Status, StartTime, Duration
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Mount failures**: Ensure no other processes are using the mount directory
+2. **Driver installation failures**: Verify INF files are valid and architecture matches
+3. **Registry operation failures**: Check registry file syntax and permissions
+4. **AppX removal failures**: Some packages may be protected; use `-ErrorAction Continue`
+
+### Debugging Commands
+
+```powershell
+# Check mount status
+Get-WindowsImage -Mounted
+
+# Validate driver files
+$drivers | Where-Object { -not $_.ComponentFile.Exists } | ForEach-Object { Write-Warning "Missing: $($_.ComponentFile.FullName)" }
+
+# Test registry operations
+$regOps | Where-Object { $_.Operation -eq "Create" } | ForEach-Object { Write-Output "Creating: $($_.Key)" }
+
+# Verify Autopilot configuration
+$autopilot | ConvertTo-Json -Depth 10
+```
+
+This comprehensive customization framework enables enterprise-grade Windows image preparation with full automation and tracking capabilities.

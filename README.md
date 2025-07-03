@@ -1,122 +1,233 @@
 # PSWindowsImageTools
 
-A comprehensive PowerShell module for Windows image customization and management, providing enterprise-grade tools for Windows Update integration, image customization, and automated deployment.
+A comprehensive PowerShell module for Windows image management, ADK automation, and deployment workflows. Streamline your Windows deployment process with powerful cmdlets for image customization, update management, and component installation.
 
-## Features
+## 🚀 Key Features
 
-- **🔍 Image Management**: Get detailed information about Windows images with advanced metadata
-- **📦 Update Integration**: Search, download, and install Windows updates with resume capability
-- **🛠️ Image Customization**: Install updates and add custom SetupComplete actions
-- **🗄️ Database Tracking**: SQLite-based tracking of operations with comprehensive logging
-- **🔧 Mount Management**: Automated mounting with GUID-based organization and cleanup
-- **📊 Progress Tracking**: Real-time progress with intelligent size formatting and statistics
-- **🎯 Format Conversion**: Convert ESD files to WIM format with filtering capabilities
-- **🏗️ ADK Integration**: Detect Windows ADK installations and manage WinPE Optional Components
-- **⚙️ Component Management**: Install WinPE Optional Components into boot images with validation
+### 🖼️ **Windows Image Management**
+- Mount, modify, and manage Windows WIM/ESD images
+- Full pipeline support for batch operations
+- Automatic cleanup and error handling
+- Database tracking for operation history
 
-## Quick Start
+### 📦 **Windows Update Integration**
+- Search Microsoft Update Catalog with advanced filtering
+- Download updates with resume capability and integrity verification
+- Install updates into mounted images with progress tracking
+- Support for both file-based and pipeline workflows
+
+### 🛠️ **ADK Management & Automation**
+- Automatic detection and installation of latest Windows ADK
+- Dynamic parsing of Microsoft's download pages
+- WinPE Optional Component management with validation
+- Enhanced process monitoring with command-line transparency
+
+### 🔧 **Advanced Image Customization**
+- Registry operations with hive mounting/unmounting
+- Driver integration with INF parsing and hardware ID extraction
+- Autopilot configuration management
+- Unattend.xml creation and modification
+- AppX package removal with regex filtering
+- Custom setup actions and first-boot scripts
+
+### 📊 **Enterprise Features**
+- SQLite database for operation tracking and inventory
+- Windows release information and KB correlation
+- Patch Tuesday automation and scheduling
+- Comprehensive logging and progress reporting
+
+## 🏃‍♂️ Quick Start
 
 ```powershell
 # Import the module
 Import-Module PSWindowsImageTools
 
-# Configure database (optional)
-Set-WindowsImageDatabaseConfiguration -Path "C:\Database\images.db"
-New-WindowsImageDatabase
+# Install latest ADK automatically
+Install-ADK -IncludeWinPE -IncludeDeploymentTools
 
 # Get image information
 $images = Get-WindowsImageList -ImagePath "C:\Images\install.wim"
 
-# Download Windows updates
+# Search and download latest updates
 $updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 |
     Get-WindowsUpdateDownloadUrl |
     Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
 
-# Mount image and install updates
+# Mount, customize, and update image
 $mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
-$updates | ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath $mounted[0].MountPath }
-
-# Add custom setup actions
-Add-SetupCompleteAction -ImagePath $mounted[0].MountPath -Command "echo Custom setup complete" -Description "Post-install message"
-
-# Dismount and save
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates
 $mounted | Dismount-WindowsImageList -Save
 ```
 
-## Documentation
+## 📋 Complete Cmdlet Reference
 
-- **[Cmdlet Reference](docs/CmdletReference.md)** - Complete cmdlet documentation and examples
-- **[Windows Update Catalog](docs/WindowsUpdateCatalog.md)** - Update search, download, and installation
-- **[Image Customization](docs/ImageCustomization.md)** - Update installation and SetupComplete automation
-- **[Changelog](docs/CHANGELOG.md)** - Version history and changes
+### **ADK & Component Management**
+| Cmdlet | Description |
+|--------|-------------|
+| `Get-ADKInstallation` | Detect installed Windows ADK versions |
+| `Install-ADK` | Download and install latest ADK with patches |
+| `Uninstall-ADK` | Remove ADK installations |
+| `Get-WinPEOptionalComponent` | Discover available WinPE components |
+| `Add-WinPEOptionalComponent` | Install components into boot images |
 
-## Key Cmdlets
+### **Image Management**
+| Cmdlet | Description |
+|--------|-------------|
+| `Get-WindowsImageList` | Enumerate images in WIM/ESD files |
+| `Mount-WindowsImageList` | Mount images for modification |
+| `Dismount-WindowsImageList` | Unmount and save changes |
+| `Convert-ESDToWindowsImage` | Convert ESD to WIM format |
+| `Reset-WindowsImageBase` | Reset image base and cleanup |
 
-### Core Image Management
-- `Get-WindowsImageList` - Get detailed Windows image information
-- `Mount-WindowsImageList` - Mount images with GUID-based organization
-- `Dismount-WindowsImageList` - Dismount with save and cleanup options
+### **Windows Update Workflow**
+| Cmdlet | Description |
+|--------|-------------|
+| `Search-WindowsUpdateCatalog` | Search Microsoft Update Catalog |
+| `Get-WindowsUpdateDownloadUrl` | Extract download URLs |
+| `Save-WindowsUpdateCatalogResult` | Download with resume capability |
+| `Install-WindowsImageUpdate` | Install updates into mounted images |
+| `Get-PatchTuesday` | Calculate Patch Tuesday dates |
 
-### Windows Update Integration
-- `Search-WindowsUpdateCatalog` - Search Windows Update Catalog
-- `Get-WindowsUpdateDownloadUrl` - Extract download URLs from results
-- `Save-WindowsUpdateCatalogResult` - Download with resume capability
-- `Install-WindowsUpdateFile` - Install CAB/MSU files into mounted images
+### **Image Customization**
+| Cmdlet | Description |
+|--------|-------------|
+| `Get-INFDriverList` | Parse INF files and extract driver info |
+| `Add-INFDriverList` | Install drivers into mounted images |
+| `Remove-AppXProvisionedPackageList` | Remove AppX packages with filtering |
+| `Get-RegistryOperationList` | Parse registry files |
+| `Write-RegistryOperationList` | Apply registry operations |
+| `Add-SetupCompleteAction` | Add custom first-boot actions |
 
-### Image Customization
-- `Add-SetupCompleteAction` - Add custom first-boot actions
-- `Convert-ESDToWindowsImage` - Convert ESD to WIM format
+### **Autopilot & Configuration**
+| Cmdlet | Description |
+|--------|-------------|
+| `Get-AutopilotConfiguration` | Load Autopilot JSON configuration |
+| `Set-AutopilotConfiguration` | Modify Autopilot settings |
+| `Export-AutopilotConfiguration` | Save Autopilot configuration |
+| `Install-AutopilotConfiguration` | Apply to mounted images |
+| `New-AutopilotConfiguration` | Create new configuration |
 
-### Database Operations
-- `Set-WindowsImageDatabaseConfiguration` - Configure operation tracking
-- `New-WindowsImageDatabase` - Initialize database schema
-- `Search-WindowsImageDatabase` - Query operation history
+### **Database & Tracking**
+| Cmdlet | Description |
+|--------|-------------|
+| `Set-WindowsImageDatabaseConfiguration` | Configure database settings |
+| `New-WindowsImageDatabase` | Initialize database schema |
+| `Search-WindowsImageDatabase` | Query operation history |
+| `Clear-WindowsImageDatabase` | Reset database |
 
-## Examples
+### **Release Information**
+| Cmdlet | Description |
+|--------|-------------|
+| `Get-WindowsReleaseInfo` | Get Windows release history and KB info |
 
-### Complete Image Customization
+## 💡 Usage Examples
+
+### **Enterprise Deployment Workflow**
 ```powershell
-# Download latest Windows 11 updates
-$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 -MaxResults 3 |
+# 1. Setup environment
+Install-ADK -Force
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
+New-WindowsImageDatabase
+
+# 2. Get latest Windows 11 updates
+$latestRelease = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest
+$updates = Search-WindowsUpdateCatalog -Query $latestRelease.LatestKBArticle -Architecture x64 |
     Get-WindowsUpdateDownloadUrl |
     Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
 
-# Mount Windows image
-$mounted = Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount" -ReadWrite
+# 3. Customize image with drivers and updates
+$images = Get-WindowsImageList -ImagePath "install.wim" | Where-Object { $_.ImageName -like "*Enterprise*" }
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+
+# Install drivers
+$drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse
+$mounted | Add-INFDriverList -Drivers $drivers
 
 # Install updates
-$updates | ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath $mounted[0].MountPath -ValidateImage }
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates
 
-# Add enterprise configuration
-Add-SetupCompleteAction -ImagePath $mounted[0].MountPath -ScriptFile "enterprise-setup.cmd" -Priority 50
-Add-SetupCompleteAction -ImagePath $mounted[0].MountPath -Command "reg add HKLM\Software\..." -Priority 100
+# Configure Autopilot
+$autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%"
+$mounted | Install-AutopilotConfiguration -Configuration $autopilot
 
-# Save and dismount
-Dismount-WindowsImageList -MountPath $mounted[0].MountPath -Save
+# Remove unwanted AppX packages
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire" -ExclusionFilter "Store|Calculator"
+
+# Save and cleanup
+$mounted | Dismount-WindowsImageList -Save
 ```
 
-### Batch Processing with Database Tracking
+### **Automated Patch Tuesday Updates**
 ```powershell
-# Configure database
-Set-WindowsImageDatabaseConfiguration -Path "C:\Database\operations.db"
-New-WindowsImageDatabase
+# Calculate next Patch Tuesday
+$nextPatchTuesday = Get-PatchTuesday -Next
 
-# Process multiple images
-Get-WindowsImageList -ImagePath "install.wim" |
-    Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite |
-    ForEach-Object {
-        Install-WindowsUpdateFile -UpdatePath "C:\Updates\" -ImagePath $_.MountPath -ContinueOnError
-        Add-SetupCompleteAction -ImagePath $_.MountPath -Command "echo Processed" -Description "Batch processing"
-        Dismount-WindowsImageList -MountPath $_.MountPath -Save
-    }
+# Setup automated download for that date
+$updates = Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 |
+    Where-Object { $_.LastModified.Date -eq $nextPatchTuesday.Date } |
+    Get-WindowsUpdateDownloadUrl |
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\PatchTuesday\$($nextPatchTuesday.Date.ToString('yyyy-MM'))"
 
-# Query operation history
-Search-WindowsImageDatabase -EventType "Download" -After (Get-Date).AddDays(-7)
+Write-Output "Downloaded $($updates.Count) updates for Patch Tuesday: $($nextPatchTuesday.Date.ToString('MMMM dd, yyyy'))"
 ```
 
-## Requirements
+### **WinPE Customization**
+```powershell
+# Install ADK with WinPE
+Install-ADK -IncludeWinPE -IncludeDeploymentTools
 
-- Windows 10/11 or Windows Server 2016+
+# Get available components
+$adk = Get-ADKInstallation -Latest
+$components = Get-WinPEOptionalComponent -ADKInstallation $adk -Category "Scripting","Networking"
+
+# Mount WinPE image and add components
+$winpe = Get-WindowsImageList -ImagePath "C:\WinPE\boot.wim"
+$mounted = $winpe | Mount-WindowsImageList -MountPath "C:\WinPE\Mount" -ReadWrite
+
+# Add PowerShell and networking support
+$mounted | Add-WinPEOptionalComponent -Components ($components | Where-Object { $_.Name -like "*PowerShell*" -or $_.Name -like "*WMI*" })
+
+$mounted | Dismount-WindowsImageList -Save
+```
+
+## 🔧 Installation & Requirements
+
+### **Prerequisites**
+- Windows 10/11 or Windows Server 2019/2022
 - PowerShell 5.1 or PowerShell 7+
-- Administrative privileges for image operations
-- .NET Framework 4.8 or .NET 6+
+- Administrator privileges for image operations
+- DISM tools (included with Windows)
+
+### **Installation**
+```powershell
+# Clone repository
+git clone https://github.com/Grace-Solutions/PSWindowsImageTools.git
+cd PSWindowsImageTools
+
+# Import module
+Import-Module .\Module\PSWindowsImageTools\PSWindowsImageTools.psd1
+
+# Verify installation
+Get-Command -Module PSWindowsImageTools
+```
+
+## 📚 Documentation
+
+- **[Complete Cmdlet Reference](docs/CmdletReference.md)** - Detailed documentation for all cmdlets
+- **[Windows Update Catalog Guide](docs/WindowsUpdateCatalog.md)** - Update management workflows
+- **[Image Customization Guide](docs/ImageCustomization.md)** - Advanced customization techniques
+
+## 🤝 Contributing
+
+We welcome contributions! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request with detailed description
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**PSWindowsImageTools** - Streamlining Windows deployment automation with PowerShell excellence.

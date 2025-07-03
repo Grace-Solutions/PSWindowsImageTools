@@ -2,378 +2,43 @@
 
 Complete reference for all cmdlets in the PSWindowsImageTools module.
 
-## Core Image Management
-
-### Get-WindowsImageList
-Get detailed information about Windows images in WIM/ESD files.
-
-```powershell
-Get-WindowsImageList -ImagePath "install.wim" [-Advanced] [-InclusionFilter {scriptblock}] [-ExclusionFilter {scriptblock}]
-```
-
-**Parameters:**
-- `ImagePath`: Path to WIM/ESD file
-- `Advanced`: Include detailed metadata (slower)
-- `InclusionFilter`: PowerShell scriptblock to select images
-- `ExclusionFilter`: PowerShell scriptblock to exclude images
-
-### Mount-WindowsImageList
-Mount Windows images with GUID-based organization.
-
-```powershell
-Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount" [-ReadWrite] [-InclusionFilter {scriptblock}] [-ExclusionFilter {scriptblock}]
-```
-
-**Parameters:**
-- `ImagePath`: Path to WIM/ESD file
-- `Index`: Image index to mount (optional with filters)
-- `MountPath`: Base mount directory
-- `ReadWrite`: Mount as read-write (default: read-only)
-- `InclusionFilter`: PowerShell scriptblock to select images
-- `ExclusionFilter`: PowerShell scriptblock to exclude images
-
-### Dismount-WindowsImageList
-Dismount mounted Windows images with cleanup options.
-
-```powershell
-Dismount-WindowsImageList -MountPath "C:\Mount\{guid}\1" [-Save] [-CleanupDirectory]
-```
-
-**Parameters:**
-- `MountPath`: Path to mounted image
-- `Save`: Save changes to the image
-- `CleanupDirectory`: Remove mount directory after dismount
-
-## Windows Update Integration
-
-### Search-WindowsUpdateCatalog
-Search the Windows Update Catalog for updates.
-
-```powershell
-Search-WindowsUpdateCatalog -Query "Windows 11" [-Architecture x64] [-Products @("Windows 11")] [-MaxResults 10]
-```
-
-**Parameters:**
-- `Query`: Search query string
-- `Architecture`: Filter by architecture (x86, x64, arm64)
-- `Products`: Filter by product names
-- `MaxResults`: Maximum number of results to return
-
-### Get-WindowsUpdateDownloadUrl
-Extract download URLs from catalog search results.
-
-```powershell
-$catalogResults | Get-WindowsUpdateDownloadUrl
-```
-
-**Pipeline Input:** WindowsUpdateCatalogResult objects
-
-### Save-WindowsUpdateCatalogResult
-Download Windows updates with resume capability.
-
-```powershell
-$catalogResults | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" [-Verify] [-Resume]
-```
-
-**Parameters:**
-- `DestinationPath`: Directory to save downloaded files
-- `Verify`: Verify file integrity after download
-- `Resume`: Resume interrupted downloads
-
-### Install-WindowsImageUpdate
-Install Windows updates into mounted images. Supports both file paths and WindowsUpdatePackage objects.
-
-```powershell
-# Install from file paths
-Install-WindowsImageUpdate -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1" [-ValidateImage] [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
-
-# Install from pipeline (WindowsUpdatePackage objects)
-$mountedImages | Install-WindowsImageUpdate -UpdatePackages $packages [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
-```
-
-**Parameters:**
-- `UpdatePath`: Path to update file(s) or directory (FromFiles parameter set)
-- `ImagePath`: Path to mounted Windows image (FromFiles parameter set)
-- `MountedImages`: Mounted Windows images from Mount-WindowsImageList (FromPackages parameter set)
-- `UpdatePackages`: WindowsUpdatePackage objects from Save-WindowsUpdateCatalogResult (FromPackages parameter set)
-- `ValidateImage`: Validate image before installation (FromFiles only)
-- `IgnoreCheck`: Skip DISM applicability checks
-- `PreventPending`: Prevent prerequisite installation
-- `ContinueOnError`: Continue on individual failures
-
-**Output:**
-- FromFiles: Returns `WindowsImageUpdateResult[]` objects
-- FromPackages: Returns updated `MountedWindowsImage[]` objects for pipeline continuation
-
-### Install-WindowsImageUpdate
-Install updates from pipeline into mounted images.
-
-```powershell
-$mountedImages | Install-WindowsImageUpdate -InputObject $updatePackages
-```
-
-**Parameters:**
-- `MountedImages`: MountedWindowsImage objects from pipeline
-- `InputObject`: WindowsUpdatePackage objects to install
-
-## Image Customization
-
-### Add-SetupCompleteAction
-Add custom actions to SetupComplete.cmd for first boot execution.
-
-```powershell
-Add-SetupCompleteAction -ImagePath "C:\Mount\Image1" -Command "echo Hello" [-Description "Test"] [-Priority 100] [-ContinueOnError] [-ScriptFile "script.cmd"] [-CopyFiles @("file1", "file2")] [-CopyDestination "Temp\Custom"] [-Backup]
-```
-
-**Parameters:**
-- `ImagePath`: Path to mounted Windows image
-- `Command`: Command(s) to execute
-- `Description`: Action description for documentation
-- `Priority`: Execution order (1-999, default: 100)
-- `ContinueOnError`: Continue if action fails
-- `ScriptFile`: Script file to copy and execute
-- `CopyFiles`: Files/directories to copy to image
-- `CopyDestination`: Destination path for copied files
-- `Backup`: Create backup of existing SetupComplete.cmd
-
-## Database Operations
-
-### Set-WindowsImageDatabaseConfiguration
-Configure database connection for operation tracking.
-
-```powershell
-Set-WindowsImageDatabaseConfiguration -Path "C:\Database\images.db" [-Disable]
-```
-
-**Parameters:**
-- `Path`: Path to SQLite database file
-- `Disable`: Disable database usage for current session
-
-### New-WindowsImageDatabase
-Create and initialize the database schema.
-
-```powershell
-New-WindowsImageDatabase [-Force]
-```
-
-**Parameters:**
-- `Force`: Overwrite existing database
-
-### Clear-WindowsImageDatabase
-Clear all data from the database with confirmation.
-
-```powershell
-Clear-WindowsImageDatabase [-Force]
-```
-
-**Parameters:**
-- `Force`: Skip confirmation prompt
-
-### Search-WindowsImageDatabase
-Search database records for builds, updates, and events.
-
-```powershell
-Search-WindowsImageDatabase [-BuildId "guid"] [-UpdateId "guid"] [-EventType "Download"] [-After (Get-Date).AddDays(-7)]
-```
-
-**Parameters:**
-- `BuildId`: Filter by build GUID
-- `UpdateId`: Filter by update GUID
-- `EventType`: Filter by event type
-- `After`: Filter events after date
-
-## Format Conversion
-
-### Convert-ESDToWindowsImage
-Convert ESD files to WIM format with filtering.
-
-```powershell
-Convert-ESDToWindowsImage -ESDPath "install.esd" -OutputPath "install.wim" [-InclusionFilter {scriptblock}] [-ExclusionFilter {scriptblock}]
-```
-
-**Parameters:**
-- `ESDPath`: Path to source ESD file
-- `OutputPath`: Path for output WIM file
-- `InclusionFilter`: PowerShell scriptblock to select images
-- `ExclusionFilter`: PowerShell scriptblock to exclude images
-
-## Utility Cmdlets
-
-### Get-PatchTuesday
-Calculate Patch Tuesday dates for planning update deployments.
-
-```powershell
-Get-PatchTuesday [-Year 2025] [-Month 6] [-After (Get-Date)] [-Count 12]
-```
-
-**Parameters:**
-- `Year`: Specific year (derived from After if not specified)
-- `Month`: Specific month (returns all months if not specified)
-- `After`: Return dates after this date (default: today)
-- `Count`: Maximum number of dates to return
-
-### Get-WindowsReleaseInfo
-Fetch comprehensive Windows release information from Microsoft sources.
-
-```powershell
-Get-WindowsReleaseInfo [-OperatingSystem "Windows 11"] [-ReleaseId "22H2"] [-BuildNumber 22621] [-KBArticle "KB5000001"] [-Version "10.0.22621"] [-LTSCOnly] [-ClientOnly] [-ServerOnly] [-Latest] [-WithKBOnly] [-After (Get-Date "2023-01-01")] [-Before (Get-Date "2024-01-01")] [-Detailed] [-ContinueOnError]
-```
-
-**Parameters:**
-- `OperatingSystem`: Filter by OS (Windows 10, Windows 11, Windows Server 2019, etc.)
-- `ReleaseId`: Filter by release ID (21H2, 22H2, 23H2, 24H2, etc.)
-- `BuildNumber`: Filter by build number (19041, 22621, etc.)
-- `KBArticle`: Filter by KB article number (KB5000001, etc.)
-- `Version`: Filter by version string (10.0.22621.2428, etc.)
-- `LTSCOnly`: Include only LTSC/LTSB releases
-- `ClientOnly`: Include only Client operating systems
-- `ServerOnly`: Include only Server operating systems
-- `Latest`: Get latest release for each OS/release ID combination
-- `WithKBOnly`: Return only releases that have KB articles
-- `After`: Filter releases after this date
-- `Before`: Filter releases before this date
-- `Detailed`: Include detailed release information
-- `ContinueOnError`: Continue processing on errors
-
-## Common Patterns
-
-### Windows Release Information Workflows
-
-```powershell
-# Find latest KB for Windows 11 22H2
-$latestWin11 = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -ReleaseId "22H2" -Latest
-$latestKB = $latestWin11.LatestKBArticle
-
-# Search for that KB in Windows Update Catalog and download
-$catalogResults = Search-WindowsUpdateCatalog -Query $latestKB
-$catalogResults | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
-
-# Correlate version to release information
-$version = "10.0.22621.2428"
-$releaseInfo = Get-WindowsReleaseInfo -Version $version
-Write-Host "Version $version belongs to: $($releaseInfo.OperatingSystem) $($releaseInfo.ReleaseId)"
-
-# Find all LTSC releases with KB articles
-$ltscReleases = Get-WindowsReleaseInfo -LTSCOnly -WithKBOnly
-$ltscReleases | ForEach-Object {
-    Write-Host "$($_.OperatingSystem) $($_.ReleaseId) - Latest KB: $($_.LatestKBArticle)"
-}
-
-# Get release history for specific build
-$buildReleases = Get-WindowsReleaseInfo -BuildNumber 22621 -Detailed
-$buildReleases.Releases | Sort-Object AvailabilityDate | ForEach-Object {
-    Write-Host "$($_.AvailabilityDate.ToString('yyyy-MM-dd')) - $($_.Version) ($($_.KBArticle))"
-}
-```
-
-### Complete Image Customization Workflow
-
-```powershell
-# 1. Configure database
-Set-WindowsImageDatabaseConfiguration -Path "C:\Database\images.db"
-New-WindowsImageDatabase
-
-# 2. Get and mount image
-$images = Get-WindowsImageList -ImagePath "install.wim" -InclusionFilter { $_.ImageName -like "*Pro*" }
-$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
-
-# 3. Get latest updates using release info
-$latestWin11 = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest -WithKBOnly
-$updates = $latestWin11 | ForEach-Object {
-    Search-WindowsUpdateCatalog -Query $_.LatestKBArticle -Architecture x64
-} | Get-WindowsUpdateDownloadUrl | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
-
-# 4. Install updates
-$updates | ForEach-Object { Install-WindowsUpdateFile -UpdatePath $_.LocalFile -ImagePath $mounted[0].MountPath }
-
-# 5. Add custom setup actions
-Add-SetupCompleteAction -ImagePath $mounted[0].MountPath -ScriptFile "setup.cmd" -Priority 50
-Add-SetupCompleteAction -ImagePath $mounted[0].MountPath -Command "reg add..." -Priority 100
-
-# 6. Dismount and save
-$mounted | Dismount-WindowsImageList -Save -CleanupDirectory
-```
-
-### Batch Processing with Error Handling
-
-```powershell
-# Process multiple images with error handling
-$images = Get-WindowsImageList -ImagePath "install.wim"
-$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
-
-foreach ($image in $mounted) {
-    try {
-        # Install updates with error continuation
-        Install-WindowsUpdateFile -UpdatePath "C:\Updates\" -ImagePath $image.MountPath -ContinueOnError
-        
-        # Add setup actions with error handling
-        Add-SetupCompleteAction -ImagePath $image.MountPath -Command "echo Processed" -ContinueOnError
-        
-        # Save changes
-        Dismount-WindowsImageList -MountPath $image.MountPath -Save
-    }
-    catch {
-        Write-Warning "Failed to process $($image.ImageName): $($_.Exception.Message)"
-        # Dismount without saving on error
-        Dismount-WindowsImageList -MountPath $image.MountPath
-    }
-}
-```
-
-### Database Querying
-
-```powershell
-# Find recent downloads
-$recentDownloads = Search-WindowsImageDatabase -EventType "Download" -After (Get-Date).AddDays(-7)
-
-# Find builds with specific updates
-$buildsWithUpdate = Search-WindowsImageDatabase -UpdateId "ea1c079c-952f-41cb-9a15-79799249e300"
-
-# Clear old data
-Clear-WindowsImageDatabase -Force
-```
-
-## ADK and Optional Component Management
+## Table of Contents
+
+- [ADK Management](#adk-management)
+- [Image Management](#image-management)
+- [Windows Update Workflow](#windows-update-workflow)
+- [Image Customization](#image-customization)
+- [Autopilot & Configuration](#autopilot--configuration)
+- [Database Operations](#database-operations)
+- [Release Information](#release-information)
+
+---
+
+## ADK Management
 
 ### Get-ADKInstallation
-Detect installed Windows Assessment and Deployment Kit (ADK) installations.
+Detect and enumerate installed Windows ADK versions.
 
 ```powershell
-Get-ADKInstallation [-Latest] [-MinimumVersion <Version>] [-RequireWinPE] [-RequireDeploymentTools] [-RequiredArchitecture <String>]
+Get-ADKInstallation [-Latest] [-RequireWinPE] [-RequireDeploymentTools]
 ```
 
 **Parameters:**
-- `Latest`: Return only the latest version if multiple installations found
-- `MinimumVersion`: Minimum required ADK version
-- `RequireWinPE`: Require WinPE add-on to be installed
-- `RequireDeploymentTools`: Require Deployment Tools to be installed
-- `RequiredArchitecture`: Specific architecture support required (x86, amd64, arm64)
+- `Latest`: Return only the latest installed version
+- `RequireWinPE`: Only return installations that include WinPE add-on
+- `RequireDeploymentTools`: Only return installations that include Deployment Tools
 
-### Get-WinPEOptionalComponent
-Get available WinPE Optional Components from ADK installation.
-
+**Examples:**
 ```powershell
-Get-WinPEOptionalComponent [-ADKInstallation <ADKInfo>] [-Architecture <String>] [-IncludeLanguagePacks] [-Category <String[]>] [-Name <String[]>]
+# Get all ADK installations
+$allADKs = Get-ADKInstallation
+
+# Get latest ADK with WinPE
+$latestADK = Get-ADKInstallation -Latest -RequireWinPE
+
+# Check if deployment tools are available
+$deploymentADK = Get-ADKInstallation -RequireDeploymentTools
 ```
-
-**Parameters:**
-- `ADKInstallation`: ADK installation to scan (auto-detected if not specified)
-- `Architecture`: Target architecture (x86, amd64, arm64) - default: amd64
-- `IncludeLanguagePacks`: Include language pack components
-- `Category`: Filter by category (Networking, Storage, Scripting, etc.)
-- `Name`: Filter by name pattern (supports wildcards)
-
-### Add-WinPEOptionalComponent
-Install WinPE Optional Components into mounted boot images.
-
-```powershell
-Add-WinPEOptionalComponent -MountedImages <MountedWindowsImage[]> -Components <WinPEOptionalComponent[]> [-ContinueOnError]
-```
-
-**Parameters:**
-- `MountedImages`: Mounted boot images from Mount-WindowsImageList
-- `Components`: Optional components from Get-WinPEOptionalComponent
-- `ContinueOnError`: Continue if individual components fail
 
 ### Install-ADK
 Download and install the latest Windows ADK silently with automatic patch detection.
@@ -394,94 +59,635 @@ Install-ADK [-InstallPath <String>] [-IncludeWinPE] [-IncludeDeploymentTools] [-
 - Detects and applies available patches (ZIP files with MSP files)
 - Enhanced process monitoring with command line display and timeouts
 
+**Examples:**
+```powershell
+# Install latest ADK with all components
+$adk = Install-ADK -IncludeWinPE -IncludeDeploymentTools
+
+# Force fresh installation to custom path
+$adk = Install-ADK -InstallPath "C:\CustomADK" -Force
+
+# Install ADK (skips if already present by default)
+$adk = Install-ADK
+```
+
 ### Uninstall-ADK
-Uninstall Windows ADK and WinPE add-on silently.
+Remove Windows ADK installations.
 
 ```powershell
 Uninstall-ADK [-All] [-Force]
 ```
 
 **Parameters:**
-- `All`: Remove all ADK installations found on the system
-- `Force`: Force uninstallation without confirmation prompts
+- `All`: Remove all ADK installations (default: remove latest only)
+- `Force`: Skip confirmation prompts
 
-## ADK and Optional Component Examples
-
-### ADK Installation and Management
-
+**Examples:**
 ```powershell
-# Install latest ADK with WinPE and Deployment Tools
-$adk = Install-ADK -IncludeWinPE -IncludeDeploymentTools
-
-# Install to custom path
-$adk = Install-ADK -InstallPath "C:\CustomADK" -IncludeWinPE
-
-# Skip installation if already present (default behavior)
-$adk = Install-ADK
-
-# Uninstall latest ADK
+# Remove latest ADK with confirmation
 Uninstall-ADK
 
-# Uninstall all ADK installations
+# Remove all ADK installations silently
 Uninstall-ADK -All -Force
 ```
 
-### Basic ADK Detection and Component Installation
+### Get-WinPEOptionalComponent
+Discover available WinPE Optional Components.
 
 ```powershell
-# 1. Detect or install ADK
-$adk = Get-ADKInstallation -Latest -RequireWinPE
-if (-not $adk) {
-    $adk = Install-ADK -IncludeWinPE -IncludeDeploymentTools
-}
-
-# 2. Get available components
-$components = Get-WinPEOptionalComponent -ADKInstallation $adk -Category Scripting
-
-# 3. Mount boot image
-$mounted = Mount-WindowsImageList -ImagePath "boot.wim" -Index 2 -MountPath "C:\Mount" -ReadWrite
-
-# 4. Install components
-$results = Add-WinPEOptionalComponent -MountedImages $mounted -Components $components
-
-# 5. Dismount and save
-Dismount-WindowsImageList -MountPath $mounted[0].MountPath -Save
+Get-WinPEOptionalComponent -ADKInstallation <ADKInfo> [-Architecture <String>] [-Category <String[]>]
 ```
 
-### Advanced Component Management
+**Parameters:**
+- `ADKInstallation`: ADK installation object from Get-ADKInstallation
+- `Architecture`: Filter by architecture (x86, amd64, arm64)
+- `Category`: Filter by component categories
+
+**Examples:**
+```powershell
+# Get all components for latest ADK
+$adk = Get-ADKInstallation -Latest
+$components = Get-WinPEOptionalComponent -ADKInstallation $adk
+
+# Get scripting components for x64
+$scripting = Get-WinPEOptionalComponent -ADKInstallation $adk -Architecture amd64 -Category "Scripting"
+```
+
+### Add-WinPEOptionalComponent
+Install WinPE Optional Components into boot images.
 
 ```powershell
-# Find PowerShell and .NET components
-$scriptingComponents = Get-ADKInstallation -Latest -RequireWinPE |
-    Get-WinPEOptionalComponent -Name "*PowerShell*","*NetFx*" -Architecture amd64
-
-# Install with comprehensive error handling
-$installResults = Add-WinPEOptionalComponent -MountedImages $mounted -Components $scriptingComponents -ContinueOnError
-
-# Review results
-foreach ($result in $installResults) {
-    Write-Host "Image: $($result.MountedImage.ImageName)"
-    Write-Host "  Success: $($result.SuccessfulComponents.Count)"
-    Write-Host "  Failed: $($result.FailedComponents.Count)"
-    Write-Host "  Success Rate: $($result.SuccessRate.ToString('F1'))%"
-}
+Add-WinPEOptionalComponent -MountedImage <MountedWindowsImage[]> -Components <WinPEOptionalComponent[]>
 ```
 
-### Component Discovery and Filtering
+**Parameters:**
+- `MountedImage`: Mounted boot images from Mount-WindowsImageList
+- `Components`: Components to install from Get-WinPEOptionalComponent
+
+**Examples:**
+```powershell
+# Install PowerShell support into WinPE
+$winpe = Get-WindowsImageList -ImagePath "boot.wim" | Mount-WindowsImageList -MountPath "C:\WinPE" -ReadWrite
+$psComponents = Get-WinPEOptionalComponent -ADKInstallation $adk | Where-Object { $_.Name -like "*PowerShell*" }
+$winpe | Add-WinPEOptionalComponent -Components $psComponents
+$winpe | Dismount-WindowsImageList -Save
+```
+
+---
+
+## Image Management
+
+### Get-WindowsImageList
+Get detailed information about Windows images in WIM/ESD files.
 
 ```powershell
-# Get all components with size information
-$allComponents = Get-WinPEOptionalComponent -IncludeLanguagePacks |
-    Sort-Object Category, Name
-
-# Filter by category
-$networkingComponents = Get-WinPEOptionalComponent -Category Networking
-
-# Find components by pattern
-$storageComponents = Get-WinPEOptionalComponent -Name "*Storage*","*WMI*"
-
-# Show component details
-$allComponents | Format-Table Name, Category, Architecture, SizeFormatted, IsLanguagePack
+Get-WindowsImageList -ImagePath <String> [-InclusionFilter <ScriptBlock>] [-ExclusionFilter <ScriptBlock>] [-IncludeMetadata]
 ```
 
-This reference covers all major cmdlets and common usage patterns for PSWindowsImageTools.
+**Parameters:**
+- `ImagePath`: Path to WIM or ESD file
+- `InclusionFilter`: Script block to filter included images
+- `ExclusionFilter`: Script block to filter excluded images  
+- `IncludeMetadata`: Include detailed metadata in results
+
+**Examples:**
+```powershell
+# Get all images
+$images = Get-WindowsImageList -ImagePath "install.wim"
+
+# Filter for Pro editions
+$proImages = Get-WindowsImageList -ImagePath "install.wim" -InclusionFilter { $_.ImageName -like "*Pro*" }
+
+# Get with metadata
+$detailed = Get-WindowsImageList -ImagePath "install.wim" -IncludeMetadata
+```
+
+### Mount-WindowsImageList
+Mount Windows images for modification with GUID-based organization.
+
+```powershell
+Mount-WindowsImageList -ImagePath <String> [-Index <Int32>] -MountPath <String> [-ReadWrite] [-InclusionFilter <ScriptBlock>] [-ExclusionFilter <ScriptBlock>]
+```
+
+**Parameters:**
+- `ImagePath`: Path to WIM/ESD file
+- `Index`: Specific image index to mount
+- `MountPath`: Base directory for mounting
+- `ReadWrite`: Mount as read-write (default: read-only)
+- `InclusionFilter`: Filter for specific images
+- `ExclusionFilter`: Exclude specific images
+
+**Examples:**
+```powershell
+# Mount specific image index
+$mounted = Mount-WindowsImageList -ImagePath "install.wim" -Index 1 -MountPath "C:\Mount" -ReadWrite
+
+# Mount all Pro editions
+$mounted = Mount-WindowsImageList -ImagePath "install.wim" -MountPath "C:\Mount" -ReadWrite -InclusionFilter { $_.ImageName -like "*Pro*" }
+
+# Pipeline from Get-WindowsImageList
+$images = Get-WindowsImageList -ImagePath "install.wim"
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+```
+
+### Dismount-WindowsImageList
+Dismount mounted Windows images with save and cleanup options.
+
+```powershell
+Dismount-WindowsImageList [-MountPath <String>] [-Save] [-Discard] [-CleanupDirectory]
+```
+
+**Parameters:**
+- `MountPath`: Specific mount path to dismount (optional with pipeline)
+- `Save`: Save changes to the image
+- `Discard`: Discard all changes
+- `CleanupDirectory`: Remove mount directories after dismounting
+
+**Examples:**
+```powershell
+# Save changes and cleanup
+$mounted | Dismount-WindowsImageList -Save -CleanupDirectory
+
+# Discard changes
+Dismount-WindowsImageList -MountPath "C:\Mount\{guid}\1" -Discard
+
+# Save specific mount
+Dismount-WindowsImageList -MountPath "C:\Mount\{guid}\1" -Save
+```
+
+### Convert-ESDToWindowsImage
+Convert ESD files to WIM format with filtering options.
+
+```powershell
+Convert-ESDToWindowsImage -ESDPath <String> -WIMPath <String> [-InclusionFilter <ScriptBlock>] [-ExclusionFilter <ScriptBlock>] [-CompressionType <String>]
+```
+
+**Parameters:**
+- `ESDPath`: Path to source ESD file
+- `WIMPath`: Path for output WIM file
+- `InclusionFilter`: Filter for specific images to convert
+- `ExclusionFilter`: Exclude specific images from conversion
+- `CompressionType`: WIM compression type (None, Fast, Maximum, LZX, XPRESS)
+
+**Examples:**
+```powershell
+# Convert entire ESD to WIM
+Convert-ESDToWindowsImage -ESDPath "install.esd" -WIMPath "install.wim"
+
+# Convert only Pro editions with maximum compression
+Convert-ESDToWindowsImage -ESDPath "install.esd" -WIMPath "install_pro.wim" -InclusionFilter { $_.ImageName -like "*Pro*" } -CompressionType Maximum
+```
+
+### Reset-WindowsImageBase
+Reset image base and perform cleanup operations.
+
+```powershell
+Reset-WindowsImageBase -MountedImage <MountedWindowsImage[]>
+```
+
+**Parameters:**
+- `MountedImage`: Mounted images from Mount-WindowsImageList
+
+**Examples:**
+```powershell
+# Reset base for mounted images
+$mounted | Reset-WindowsImageBase
+```
+
+---
+
+## Windows Update Workflow
+
+### Search-WindowsUpdateCatalog
+Search Microsoft Update Catalog with advanced filtering.
+
+```powershell
+Search-WindowsUpdateCatalog -Query <String> [-Architecture <String>] [-ProductFilter <String[]>] [-Before <DateTime>] [-After <DateTime>] [-MaxResults <Int32>]
+```
+
+**Parameters:**
+- `Query`: Search query string
+- `Architecture`: Filter by architecture (x86, x64, arm64)
+- `ProductFilter`: Filter by product names
+- `Before`: Updates released before this date
+- `After`: Updates released after this date
+- `MaxResults`: Maximum number of results to return
+
+**Examples:**
+```powershell
+# Search for Windows 11 cumulative updates
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64
+
+# Search with date filtering
+$recent = Search-WindowsUpdateCatalog -Query "Security Update" -After (Get-Date).AddDays(-30) -MaxResults 10
+
+# Search for specific products
+$serverUpdates = Search-WindowsUpdateCatalog -Query "Cumulative" -ProductFilter "Windows Server 2022"
+```
+
+### Get-WindowsUpdateDownloadUrl
+Extract download URLs from catalog search results.
+
+```powershell
+Get-WindowsUpdateDownloadUrl -SearchResults <WindowsUpdate[]>
+```
+
+**Parameters:**
+- `SearchResults`: Results from Search-WindowsUpdateCatalog
+
+**Examples:**
+```powershell
+# Get download URLs from search results
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64
+$downloadUrls = $updates | Get-WindowsUpdateDownloadUrl
+```
+
+### Save-WindowsUpdateCatalogResult
+Download update files with resume capability and integrity verification.
+
+```powershell
+Save-WindowsUpdateCatalogResult -UpdateResults <WindowsUpdateDownloadInfo[]> -DestinationPath <String> [-Resume] [-VerifyIntegrity]
+```
+
+**Parameters:**
+- `UpdateResults`: Download info from Get-WindowsUpdateDownloadUrl
+- `DestinationPath`: Directory to save downloaded files
+- `Resume`: Resume interrupted downloads
+- `VerifyIntegrity`: Verify file integrity after download
+
+**Examples:**
+```powershell
+# Download with resume and verification
+$packages = $downloadUrls | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates" -Resume -VerifyIntegrity
+
+# Simple download
+$packages = $downloadUrls | Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+```
+
+### Install-WindowsImageUpdate
+Install Windows updates into mounted images. Supports both file paths and WindowsUpdatePackage objects.
+
+```powershell
+# Install from file paths
+Install-WindowsImageUpdate -UpdatePath <FileSystemInfo[]> -ImagePath <DirectoryInfo> [-ValidateImage] [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
+
+# Install from pipeline (WindowsUpdatePackage objects)
+Install-WindowsImageUpdate -MountedImages <MountedWindowsImage[]> -UpdatePackages <WindowsUpdatePackage[]> [-IgnoreCheck] [-PreventPending] [-ContinueOnError]
+```
+
+**Parameters:**
+- `UpdatePath`: Path to update file(s) or directory (FromFiles parameter set)
+- `ImagePath`: Path to mounted Windows image (FromFiles parameter set)
+- `MountedImages`: Mounted Windows images from Mount-WindowsImageList (FromPackages parameter set)
+- `UpdatePackages`: WindowsUpdatePackage objects from Save-WindowsUpdateCatalogResult (FromPackages parameter set)
+- `ValidateImage`: Validate image before installation (FromFiles only)
+- `IgnoreCheck`: Skip applicability checks
+- `PreventPending`: Prevent prerequisite installation
+- `ContinueOnError`: Continue on individual failures
+
+**Output:**
+- FromFiles: Returns `WindowsImageUpdateResult[]` objects
+- FromPackages: Returns updated `MountedWindowsImage[]` objects for pipeline continuation
+
+**Examples:**
+```powershell
+# Install from file paths
+Install-WindowsImageUpdate -UpdatePath "C:\Updates\KB5000001.msu" -ImagePath "C:\Mount\Image1" -ValidateImage
+
+# Install from pipeline
+$mounted | Install-WindowsImageUpdate -UpdatePackages $packages -IgnoreCheck
+
+# Complete workflow
+$updates = Search-WindowsUpdateCatalog -Query "Windows 11 Cumulative" -Architecture x64 |
+    Get-WindowsUpdateDownloadUrl |
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+
+$mounted = Get-WindowsImageList -ImagePath "install.wim" | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates
+$mounted | Dismount-WindowsImageList -Save
+```
+
+### Get-PatchTuesday
+Calculate Patch Tuesday dates for automation.
+
+```powershell
+Get-PatchTuesday [-Year <Int32>] [-Month <Int32>] [-Next] [-Previous] [-All]
+```
+
+**Parameters:**
+- `Year`: Specific year (default: current year)
+- `Month`: Specific month (default: current month)
+- `Next`: Get next Patch Tuesday
+- `Previous`: Get previous Patch Tuesday
+- `All`: Get all Patch Tuesdays for the year
+
+**Examples:**
+```powershell
+# Get next Patch Tuesday
+$nextPatch = Get-PatchTuesday -Next
+
+# Get all Patch Tuesdays for 2024
+$allPatches = Get-PatchTuesday -Year 2024 -All
+
+# Get current month's Patch Tuesday
+$currentPatch = Get-PatchTuesday
+```
+
+---
+
+## Image Customization
+
+### Get-INFDriverList
+Parse INF files and extract driver information with hardware ID analysis.
+
+```powershell
+Get-INFDriverList -Path <DirectoryInfo> [-Recurse] [-Architecture <String>] [-ParseHardwareIDs]
+```
+
+**Parameters:**
+- `Path`: Directory containing INF files
+- `Recurse`: Search subdirectories recursively
+- `Architecture`: Filter by architecture (x86, amd64, arm64)
+- `ParseHardwareIDs`: Extract and parse hardware IDs from INF files
+
+**Examples:**
+```powershell
+# Get all drivers from directory
+$drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse
+
+# Get x64 drivers with hardware ID parsing
+$x64Drivers = Get-INFDriverList -Path "C:\Drivers" -Architecture amd64 -ParseHardwareIDs
+```
+
+### Add-INFDriverList
+Install drivers into mounted Windows images.
+
+```powershell
+Add-INFDriverList -MountedImage <MountedWindowsImage[]> -Drivers <DriverInfo[]> [-Force]
+```
+
+**Parameters:**
+- `MountedImage`: Mounted images from Mount-WindowsImageList
+- `Drivers`: Driver information from Get-INFDriverList
+- `Force`: Force installation of unsigned drivers
+
+**Examples:**
+```powershell
+# Install drivers into mounted image
+$mounted | Add-INFDriverList -Drivers $drivers
+
+# Force install all drivers
+$mounted | Add-INFDriverList -Drivers $drivers -Force
+```
+
+### Remove-AppXProvisionedPackageList
+Remove AppX packages from mounted images with regex filtering.
+
+```powershell
+Remove-AppXProvisionedPackageList -MountedImage <MountedWindowsImage[]> [-InclusionFilter <String>] [-ExclusionFilter <String>] [-ErrorAction <ActionPreference>]
+```
+
+**Parameters:**
+- `MountedImage`: Mounted images from Mount-WindowsImageList
+- `InclusionFilter`: Regex pattern for packages to include for removal
+- `ExclusionFilter`: Regex pattern for packages to exclude from removal
+- `ErrorAction`: Action to take on errors (Continue, Stop, SilentlyContinue)
+
+**Examples:**
+```powershell
+# Remove gaming and entertainment apps
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire|Music|Video"
+
+# Remove all except essential apps
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter ".*" -ExclusionFilter "Store|Calculator|Photos|Mail"
+```
+
+### Get-RegistryOperationList
+Parse registry files and extract operations.
+
+```powershell
+Get-RegistryOperationList -Path <FileInfo[]> [-ParseValues]
+```
+
+**Parameters:**
+- `Path`: Registry files (.reg) to parse
+- `ParseValues`: Parse and validate registry values
+
+**Examples:**
+```powershell
+# Parse registry file
+$regOps = Get-RegistryOperationList -Path "C:\Config\settings.reg" -ParseValues
+```
+
+### Write-RegistryOperationList
+Apply registry operations to mounted Windows images.
+
+```powershell
+Write-RegistryOperationList -MountedImage <MountedWindowsImage[]> -Operations <RegistryOperation[]>
+```
+
+**Parameters:**
+- `MountedImage`: Mounted images from Mount-WindowsImageList
+- `Operations`: Registry operations from Get-RegistryOperationList
+
+**Examples:**
+```powershell
+# Apply registry operations
+$mounted | Write-RegistryOperationList -Operations $regOps
+```
+
+### Add-SetupCompleteAction
+Add custom first-boot actions to Windows images.
+
+```powershell
+Add-SetupCompleteAction -MountedImage <MountedWindowsImage[]> [-Command <String>] [-ScriptFile <FileInfo>] [-ScriptContent <String>] [-Priority <Int32>] [-Description <String>]
+```
+
+**Parameters:**
+- `MountedImage`: Mounted images from Mount-WindowsImageList
+- `Command`: Command line to execute
+- `ScriptFile`: Script file to copy and execute
+- `ScriptContent`: Inline script content
+- `Priority`: Execution priority (lower numbers run first)
+- `Description`: Description for logging
+
+**Examples:**
+```powershell
+# Add command
+$mounted | Add-SetupCompleteAction -Command "reg add HKLM\Software\..." -Priority 100
+
+# Add script file
+$mounted | Add-SetupCompleteAction -ScriptFile "C:\Scripts\setup.cmd" -Priority 50
+
+# Add inline script
+$mounted | Add-SetupCompleteAction -ScriptContent "echo Setup complete" -Priority 200
+```
+
+---
+
+## Autopilot & Configuration
+
+### Get-AutopilotConfiguration
+Load Autopilot JSON configuration from file.
+
+```powershell
+Get-AutopilotConfiguration -Path <FileInfo>
+```
+
+### Set-AutopilotConfiguration
+Modify Autopilot configuration settings.
+
+```powershell
+Set-AutopilotConfiguration -Configuration <AutopilotConfiguration> [-TenantId <String>] [-DeviceName <String>] [-UpdateTimeout <Int32>]
+```
+
+### Export-AutopilotConfiguration
+Save Autopilot configuration to JSON file.
+
+```powershell
+Export-AutopilotConfiguration -Configuration <AutopilotConfiguration> -Path <FileInfo>
+```
+
+### Install-AutopilotConfiguration
+Apply Autopilot configuration to mounted Windows images.
+
+```powershell
+Install-AutopilotConfiguration -MountedImage <MountedWindowsImage[]> -Configuration <AutopilotConfiguration>
+```
+
+### New-AutopilotConfiguration
+Create new Autopilot configuration.
+
+```powershell
+New-AutopilotConfiguration -TenantId <String> [-DeviceName <String>] [-UpdateTimeout <Int32>] [-ForcedEnrollment] [-DisableUpdate]
+```
+
+**Examples:**
+```powershell
+# Create and apply Autopilot configuration
+$autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%" -ForcedEnrollment
+$mounted | Install-AutopilotConfiguration -Configuration $autopilot
+```
+
+---
+
+## Database Operations
+
+### Set-WindowsImageDatabaseConfiguration
+Configure SQLite database settings for operation tracking.
+
+```powershell
+Set-WindowsImageDatabaseConfiguration -Path <String> [-ConnectionTimeout <Int32>]
+```
+
+### New-WindowsImageDatabase
+Initialize database schema for tracking operations.
+
+```powershell
+New-WindowsImageDatabase [-Force]
+```
+
+### Search-WindowsImageDatabase
+Query operation history and tracking data.
+
+```powershell
+Search-WindowsImageDatabase [-Operation <String>] [-StartDate <DateTime>] [-EndDate <DateTime>] [-Status <String>]
+```
+
+### Clear-WindowsImageDatabase
+Reset database and remove all tracking data.
+
+```powershell
+Clear-WindowsImageDatabase [-Force]
+```
+
+**Examples:**
+```powershell
+# Setup database tracking
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
+New-WindowsImageDatabase
+
+# Query recent operations
+$recentOps = Search-WindowsImageDatabase -StartDate (Get-Date).AddDays(-7)
+
+# Clear database
+Clear-WindowsImageDatabase -Force
+```
+
+---
+
+## Release Information
+
+### Get-WindowsReleaseInfo
+Get Windows release history and KB information for all versions.
+
+```powershell
+Get-WindowsReleaseInfo [-OperatingSystem <String>] [-Latest] [-WithKBOnly] [-ReleaseId <String>]
+```
+
+**Parameters:**
+- `OperatingSystem`: Filter by OS (Windows 10, Windows 11, Windows Server)
+- `Latest`: Return only the latest release
+- `WithKBOnly`: Only return releases that have KB articles
+- `ReleaseId`: Filter by specific release ID
+
+**Examples:**
+```powershell
+# Get latest Windows 11 release info
+$latest = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest
+
+# Get all Windows 10 releases with KB info
+$win10Releases = Get-WindowsReleaseInfo -OperatingSystem "Windows 10" -WithKBOnly
+
+# Get specific release
+$release = Get-WindowsReleaseInfo -ReleaseId "22H2"
+```
+
+---
+
+## Pipeline Examples
+
+### Complete Enterprise Deployment
+```powershell
+# Setup environment
+Install-ADK -Force
+Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
+New-WindowsImageDatabase
+
+# Get latest updates
+$latestRelease = Get-WindowsReleaseInfo -OperatingSystem "Windows 11" -Latest
+$updates = Search-WindowsUpdateCatalog -Query $latestRelease.LatestKBArticle -Architecture x64 |
+    Get-WindowsUpdateDownloadUrl |
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\Updates"
+
+# Customize images
+$images = Get-WindowsImageList -ImagePath "install.wim" | Where-Object { $_.ImageName -like "*Enterprise*" }
+$mounted = $images | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+
+# Apply customizations
+$drivers = Get-INFDriverList -Path "C:\Drivers" -Recurse
+$mounted | Add-INFDriverList -Drivers $drivers
+$mounted | Install-WindowsImageUpdate -UpdatePackages $updates
+$mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire" -ExclusionFilter "Store|Calculator"
+
+# Configure Autopilot
+$autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%"
+$mounted | Install-AutopilotConfiguration -Configuration $autopilot
+
+# Save and cleanup
+$mounted | Dismount-WindowsImageList -Save
+```
+
+### Automated Patch Tuesday Workflow
+```powershell
+# Calculate next Patch Tuesday
+$nextPatchTuesday = Get-PatchTuesday -Next
+
+# Download updates for that date
+$updates = Search-WindowsUpdateCatalog -Query "Cumulative" -Architecture x64 |
+    Where-Object { $_.LastModified.Date -eq $nextPatchTuesday.Date } |
+    Get-WindowsUpdateDownloadUrl |
+    Save-WindowsUpdateCatalogResult -DestinationPath "C:\PatchTuesday\$($nextPatchTuesday.Date.ToString('yyyy-MM'))"
+
+Write-Output "Downloaded $($updates.Count) updates for Patch Tuesday: $($nextPatchTuesday.Date.ToString('MMMM dd, yyyy'))"
+```
