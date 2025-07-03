@@ -68,6 +68,7 @@
         # Image Customization
         'Add-SetupCompleteAction',
         'Reset-WindowsImageBase',
+        'Invoke-MediaDynamicUpdate',
 
         # Driver Management
         'Get-INFDriverList',

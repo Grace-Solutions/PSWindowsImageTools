@@ -52,10 +52,9 @@
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
 
-    <PackageReference Include="System.Text.Json" Version="4.7.2">
-      <PrivateAssets>all</PrivateAssets>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
+    <PackageReference Include="System.Text.Json" Version="4.7.2" />
+
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
 
     <PackageReference Include="System.Net.Http" Version="4.3.4">
       <PrivateAssets>all</PrivateAssets>
@@ -88,8 +87,8 @@
       <PowerShellAssembliesToDelete Include="$(OutputPath)System.Management.Automation.dll" />
       <PowerShellAssembliesToDelete Include="$(OutputPath)Microsoft.PowerShell.*.dll" />
 
-      <!-- Remove .NET runtime assemblies (keep only essential SQLite and Registry) -->
-      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Data.SQLite.dll;$(OutputPath)System.Data.SQLite.EF6.dll;$(OutputPath)System.Data.SQLite.Linq.dll" />
+      <!-- Remove .NET runtime assemblies (keep only essential SQLite, Registry, and Text dependencies) -->
+      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Data.SQLite.dll;$(OutputPath)System.Data.SQLite.EF6.dll;$(OutputPath)System.Data.SQLite.Linq.dll;$(OutputPath)System.Text.Json.dll;$(OutputPath)System.Text.Encoding.CodePages.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" Exclude="$(OutputPath)Microsoft.Win32.Registry.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.CSharp.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.VisualBasic.*.dll" />
