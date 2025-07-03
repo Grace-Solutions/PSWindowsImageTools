@@ -29,8 +29,7 @@ namespace PSWindowsImageTools.Services
 
             try
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                    $"Reading offline registry using Registry package from: {mountPath}");
+                // Reading offline registry using Registry package
 
                 // Define registry hive paths
                 var hives = GetRegistryHivePaths(mountPath);
@@ -45,13 +44,12 @@ namespace PSWindowsImageTools.Services
                         registryInfo[$"{hive.Key}HiveSize"] = fileInfo.Length;
                         registryInfo[$"{hive.Key}HiveLastModified"] = fileInfo.LastWriteTime;
                         
-                        LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                            $"Found {hive.Key} hive: {fileInfo.Length:N0} bytes");
+                        // Found hive file
                     }
                     else
                     {
                         registryInfo[$"{hive.Key}HiveExists"] = false;
-                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Missing {hive.Key} hive");
+                        // Missing hive file
                     }
                 }
 
@@ -75,8 +73,7 @@ namespace PSWindowsImageTools.Services
                     }
                 }
 
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                    $"Successfully read {registryInfo.Count} registry values using Registry package");
+                // Successfully read registry values
             }
             catch (Exception ex)
             {
@@ -172,8 +169,7 @@ namespace PSWindowsImageTools.Services
 
             try
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                    "Reading SYSTEM hive using Registry package");
+                // Reading SYSTEM hive
 
                 var systemHive = new RegistryHive(systemHivePath);
                 systemHive.ParseHive();

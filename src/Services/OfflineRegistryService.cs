@@ -26,8 +26,7 @@ namespace PSWindowsImageTools.Services
         {
             try
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                    "Using Registry package for reading (no hive mounting required)");
+                // Using Registry package for reading
 
                 using var registryPackageService = new RegistryPackageService();
                 return registryPackageService.ReadOfflineRegistry(mountPath, cmdlet);
@@ -53,8 +52,7 @@ namespace PSWindowsImageTools.Services
         {
             try
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                    "Using native API for reading (requires hive mounting)");
+                // Using native API for reading
 
                 using var nativeRegistryService = new NativeRegistryService();
                 return nativeRegistryService.ReadOfflineRegistryWithMounting(mountPath, cmdlet);
