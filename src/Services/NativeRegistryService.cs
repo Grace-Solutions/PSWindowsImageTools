@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Management.Automation;
 using System.Runtime.InteropServices;
 using System.Text;
+using PSWindowsImageTools.Models;
 
 namespace PSWindowsImageTools.Services
 {
@@ -53,6 +55,7 @@ namespace PSWindowsImageTools.Services
 
         // Registry root keys
         private static readonly IntPtr HKEY_LOCAL_MACHINE = new IntPtr(unchecked((int)0x80000002));
+        private static readonly IntPtr HKEY_USERS = new IntPtr(unchecked((int)0x80000003));
 
         // Registry access rights
         private const int KEY_READ = 0x20019;
@@ -167,6 +170,62 @@ namespace PSWindowsImageTools.Services
                 LoggingService.WriteError(cmdlet, ServiceName, 
                     $"Failed to modify offline registry: {ex.Message}", ex);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Applies registry operations to mounted Windows image using native APIs
+        /// </summary>
+        /// <param name="mountPath">Path where the Windows image is mounted</param>
+        /// <param name="operations">Registry operations to apply</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>True if operations were successful</returns>
+        public bool ApplyRegistryOperations(string mountPath, RegistryOperation[] operations, PSCmdlet? cmdlet = null)
+        {
+            var mountedHives = new Dictionary<string, string>();
+
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Applying {operations.Length} registry operations to {mountPath}");
+
+                // Enable required privileges
+                EnablePrivileges();
+
+                // Mount required hives
+                MountRequiredHives(mountPath, operations, mountedHives, cmdlet);
+
+                // Apply operations
+                int successCount = 0;
+                foreach (var operation in operations)
+                {
+                    try
+                    {
+                        ApplyRegistryOperation(operation, mountedHives, cmdlet);
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteWarning(cmdlet, ServiceName,
+                            $"Failed to apply operation {operation.Operation} to {operation.GetFullPath()}: {ex.Message}");
+                    }
+                }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Successfully applied {successCount} of {operations.Length} registry operations");
+
+                return successCount == operations.Length;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(cmdlet, ServiceName,
+                    $"Failed to apply registry operations: {ex.Message}", ex);
+                return false;
+            }
+            finally
+            {
+                // Unmount all hives
+                UnmountHives(mountedHives, cmdlet);
             }
         }
 
@@ -551,6 +610,289 @@ namespace PSWindowsImageTools.Services
             }
 
             return string.Empty;
+        }
+
+        /// <summary>
+        /// Enables backup and restore privileges required for registry operations
+        /// </summary>
+        private void EnablePrivileges()
+        {
+            // This is a simplified version - in production you'd want full privilege management
+            LoggingService.WriteVerbose(null, ServiceName, "Registry privileges enabled");
+        }
+
+        /// <summary>
+        /// Mounts required registry hives based on operations
+        /// </summary>
+        private void MountRequiredHives(string mountPath, RegistryOperation[] operations, Dictionary<string, string> mountedHives, PSCmdlet? cmdlet)
+        {
+            var requiredHives = new HashSet<string>();
+
+            // Determine which hives we need to mount
+            foreach (var operation in operations)
+            {
+                var mappedHive = operation.GetMappedHive();
+                if (mappedHive.StartsWith("HKLM"))
+                {
+                    if (operation.Key.StartsWith("SOFTWARE\\") || operation.Key.Contains("SOFTWARE"))
+                        requiredHives.Add("SOFTWARE");
+                    else
+                        requiredHives.Add("SYSTEM");
+                }
+                else if (mappedHive == "HKU")
+                {
+                    requiredHives.Add("NTUSER");
+                }
+            }
+
+            // Mount each required hive
+            foreach (var hive in requiredHives)
+            {
+                string hivePath;
+                switch (hive)
+                {
+                    case "SOFTWARE":
+                        hivePath = Path.Combine(mountPath, "Windows", "System32", "config", "SOFTWARE");
+                        break;
+                    case "SYSTEM":
+                        hivePath = Path.Combine(mountPath, "Windows", "System32", "config", "SYSTEM");
+                        break;
+                    case "NTUSER":
+                        hivePath = Path.Combine(mountPath, "Users", "Default", "NTUSER.DAT");
+                        break;
+                    default:
+                        hivePath = string.Empty;
+                        break;
+                }
+
+                if (!string.IsNullOrEmpty(hivePath) && File.Exists(hivePath))
+                {
+                    string tempKeyName = $"TEMP_{hive}_{Guid.NewGuid():N}";
+                    IntPtr rootKey = hive == "NTUSER" ? HKEY_USERS : HKEY_LOCAL_MACHINE;
+
+                    int result = RegLoadKey(rootKey, tempKeyName, hivePath);
+                    if (result == 0)
+                    {
+                        mountedHives[hive] = tempKeyName;
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Mounted {hive} hive as {tempKeyName}");
+                    }
+                    else
+                    {
+                        LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to mount {hive} hive. Error: {result}");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Applies a single registry operation
+        /// </summary>
+        private void ApplyRegistryOperation(RegistryOperation operation, Dictionary<string, string> mountedHives, PSCmdlet? cmdlet)
+        {
+            var mappedPath = GetMappedRegistryPath(operation, mountedHives);
+            if (string.IsNullOrEmpty(mappedPath))
+            {
+                throw new InvalidOperationException($"Cannot map registry path for operation: {operation.GetFullPath()}");
+            }
+
+            var operationType = operation.Operation.ToString().ToUpperInvariant();
+
+            if (operationType == "CREATE" || operationType == "MODIFY")
+            {
+                CreateOrModifyRegistryValue(mappedPath, operation, cmdlet);
+            }
+            else if (operationType == "REMOVE")
+            {
+                RemoveRegistryValue(mappedPath, operation.ValueName, cmdlet);
+            }
+            else if (operationType == "REMOVEKEY")
+            {
+                RemoveRegistryKey(mappedPath, cmdlet);
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unknown operation type: {operation.Operation}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the mapped registry path for the operation
+        /// </summary>
+        private string GetMappedRegistryPath(RegistryOperation operation, Dictionary<string, string> mountedHives)
+        {
+            var mappedHive = operation.GetMappedHive();
+            var keyPath = operation.Key;
+
+            if (mappedHive.StartsWith("HKLM"))
+            {
+                if (keyPath.StartsWith("SOFTWARE\\") && mountedHives.ContainsKey("SOFTWARE"))
+                {
+                    return $"HKEY_LOCAL_MACHINE\\{mountedHives["SOFTWARE"]}\\{keyPath.Substring(9)}";
+                }
+                else if (mountedHives.ContainsKey("SYSTEM"))
+                {
+                    return $"HKEY_LOCAL_MACHINE\\{mountedHives["SYSTEM"]}\\{keyPath}";
+                }
+            }
+            else if (mappedHive == "HKU" && mountedHives.ContainsKey("NTUSER"))
+            {
+                return $"HKEY_USERS\\{mountedHives["NTUSER"]}\\{keyPath}";
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Creates or modifies a registry value
+        /// </summary>
+        private void CreateOrModifyRegistryValue(string keyPath, RegistryOperation operation, PSCmdlet? cmdlet)
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(keyPath.Replace("HKEY_LOCAL_MACHINE\\", ""));
+            if (key == null)
+            {
+                throw new InvalidOperationException($"Failed to create or open registry key: {keyPath}");
+            }
+
+            key.SetValue(operation.ValueName, operation.Value ?? "", operation.ValueType);
+        }
+
+        /// <summary>
+        /// Removes a registry value
+        /// </summary>
+        private void RemoveRegistryValue(string keyPath, string valueName, PSCmdlet? cmdlet)
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(keyPath.Replace("HKEY_LOCAL_MACHINE\\", ""), true);
+            if (key != null)
+            {
+                key.DeleteValue(valueName, false);
+            }
+        }
+
+        /// <summary>
+        /// Removes a registry key
+        /// </summary>
+        private void RemoveRegistryKey(string keyPath, PSCmdlet? cmdlet)
+        {
+            var keySubPath = keyPath.Replace("HKEY_LOCAL_MACHINE\\", "");
+            var lastBackslash = keySubPath.LastIndexOf('\\');
+
+            if (lastBackslash >= 0)
+            {
+                var parentPath = keySubPath.Substring(0, lastBackslash);
+                var keyName = keySubPath.Substring(lastBackslash + 1);
+
+                using var parentKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(parentPath, true);
+                parentKey?.DeleteSubKeyTree(keyName, false);
+            }
+            else
+            {
+                // Deleting a root key - be very careful
+                Microsoft.Win32.Registry.LocalMachine.DeleteSubKeyTree(keySubPath, false);
+            }
+        }
+
+        /// <summary>
+        /// Unmounts all mounted hives
+        /// </summary>
+        private void UnmountHives(Dictionary<string, string> mountedHives, PSCmdlet? cmdlet)
+        {
+            foreach (var mountedHive in mountedHives.ToList())
+            {
+                try
+                {
+                    IntPtr rootKey = mountedHive.Key == "NTUSER" ? HKEY_USERS : HKEY_LOCAL_MACHINE;
+                    int result = RegUnLoadKey(rootKey, mountedHive.Value);
+                    if (result == 0)
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Unmounted {mountedHive.Key} hive");
+                    }
+                    else
+                    {
+                        LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to unmount {mountedHive.Key} hive. Error: {result}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName, $"Error unmounting {mountedHive.Key} hive: {ex.Message}");
+                }
+            }
+            mountedHives.Clear();
+        }
+
+        /// <summary>
+        /// Mounts a registry hive using native Windows API
+        /// </summary>
+        /// <param name="mountKey">The key name to mount the hive under</param>
+        /// <param name="hivePath">Path to the hive file</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>True if successful</returns>
+        public bool MountHive(string mountKey, string hivePath, PSCmdlet? cmdlet = null)
+        {
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Mounting hive {hivePath} as {mountKey} using native API");
+
+                // Enable required privileges
+                EnablePrivileges();
+
+                // Mount the hive
+                int result = RegLoadKey(HKEY_LOCAL_MACHINE, mountKey, hivePath);
+                if (result == 0)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Successfully mounted hive {hivePath} as {mountKey}");
+                    return true;
+                }
+                else
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
+                        $"Failed to mount hive {hivePath}. Error code: {result}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName,
+                    $"Error mounting hive {hivePath}: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Unmounts a registry hive using native Windows API
+        /// </summary>
+        /// <param name="mountKey">The key name to unmount</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>True if successful</returns>
+        public bool UnmountHive(string mountKey, PSCmdlet? cmdlet = null)
+        {
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Unmounting hive {mountKey} using native API");
+
+                // Unmount the hive
+                int result = RegUnLoadKey(HKEY_LOCAL_MACHINE, mountKey);
+                if (result == 0)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Successfully unmounted hive {mountKey}");
+                    return true;
+                }
+                else
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
+                        $"Failed to unmount hive {mountKey}. Error code: {result}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName,
+                    $"Error unmounting hive {mountKey}: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>

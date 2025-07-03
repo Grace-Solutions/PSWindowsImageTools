@@ -71,11 +71,36 @@
         'Install-WindowsUpdateFile',
         'Reset-WindowsImageBase',
 
+        # Driver Management
+        'Get-INFDriverList',
+        'Add-INFDriverList',
+
+        # AppX Package Management
+        'Remove-AppXProvisionedPackageList',
+
         # Database Operations
         'Search-WindowsImageDatabase',
         'Set-WindowsImageDatabaseConfiguration',
         'New-WindowsImageDatabase',
-        'Clear-WindowsImageDatabase'
+        'Clear-WindowsImageDatabase',
+
+        # Registry Operations
+        'Get-RegistryOperationList',
+        'Write-RegistryOperationList',
+
+        # Autopilot Configuration Management
+        'Get-AutopilotConfiguration',
+        'Set-AutopilotConfiguration',
+        'Export-AutopilotConfiguration',
+        'Install-AutopilotConfiguration',
+        'New-AutopilotConfiguration',
+
+        # Unattend XML Configuration Management
+        'Get-UnattendXMLConfiguration',
+        'Set-UnattendXMLConfiguration',
+        'Export-UnattendXMLConfiguration',
+        'Install-UnattendXMLConfiguration',
+        'New-UnattendXMLConfiguration'
     )
 
     # Variables to export from this module

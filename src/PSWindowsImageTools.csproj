@@ -40,6 +40,7 @@
     <PackageReference Include="Registry" Version="1.5.0" />
     <PackageReference Include="Microsoft.Dism" Version="3.3.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
     <PackageReference Include="System.Data.SQLite" Version="1.0.118">
       <IncludeAssets>all</IncludeAssets>
       <PrivateAssets>none</PrivateAssets>
@@ -87,9 +88,9 @@
       <PowerShellAssembliesToDelete Include="$(OutputPath)System.Management.Automation.dll" />
       <PowerShellAssembliesToDelete Include="$(OutputPath)Microsoft.PowerShell.*.dll" />
 
-      <!-- Remove .NET runtime assemblies (keep only essential SQLite) -->
+      <!-- Remove .NET runtime assemblies (keep only essential SQLite and Registry) -->
       <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Data.SQLite.dll;$(OutputPath)System.Data.SQLite.EF6.dll;$(OutputPath)System.Data.SQLite.Linq.dll" />
-      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" Exclude="$(OutputPath)Microsoft.Win32.Registry.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.CSharp.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.VisualBasic.*.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Bcl.*.dll" />
