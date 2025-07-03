@@ -29,19 +29,33 @@ namespace PSWindowsImageTools.Services
 
             try
             {
-                // Check both 32-bit and 64-bit registry locations
-                var registryPaths = new[]
-                {
-                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-                    @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-                };
+                // Try registry detection first (preferred method)
+                LoggingService.WriteVerbose(cmdlet, ServiceName, "Attempting registry detection first");
 
-                foreach (var registryPath in registryPaths)
+                // Try registry detection
+                if (true)
                 {
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Scanning registry path: {registryPath}");
-                    
-                    using var baseKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(registryPath);
-                    if (baseKey == null) continue;
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, "No ADK found via file system, trying registry detection");
+
+                    // Check both 32-bit and 64-bit registry locations
+                    var registryPaths = new[]
+                    {
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                        @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+                    };
+
+                    foreach (var registryPath in registryPaths)
+                    {
+                        try
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Scanning registry path: {registryPath}");
+
+                            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Default).OpenSubKey(registryPath);
+                            if (baseKey == null)
+                            {
+                                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Registry path not accessible: {registryPath}");
+                                continue;
+                            }
 
                     foreach (var subKeyName in baseKey.GetSubKeyNames())
                     {
@@ -49,7 +63,13 @@ namespace PSWindowsImageTools.Services
                         if (subKey == null) continue;
 
                         var displayName = subKey.GetValue("DisplayName")?.ToString() ?? "";
-                        
+
+                        // Debug logging to see what we're checking
+                        if (!string.IsNullOrEmpty(displayName))
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Checking display name: '{displayName}'");
+                        }
+
                         // Look for ADK installations
                         if (IsADKInstallation(displayName))
                         {
@@ -62,6 +82,22 @@ namespace PSWindowsImageTools.Services
                             }
                         }
                     }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteWarning(cmdlet, ServiceName,
+                            $"Failed to access registry path {registryPath}: {ex.Message}");
+                        continue;
+                    }
+                }
+                }
+
+                // Try file system detection if registry detection found nothing
+                if (adkInstallations.Count == 0)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, "No ADK found via registry, trying file system detection");
+                    var fileSystemInstallations = DetectADKViaFileSystem(cmdlet!);
+                    adkInstallations.AddRange(fileSystemInstallations);
                 }
 
                 // Remove duplicates and validate installations
@@ -80,6 +116,69 @@ namespace PSWindowsImageTools.Services
             }
 
             return adkInstallations;
+        }
+
+        /// <summary>
+        /// Detects ADK installations via file system when registry access fails
+        /// </summary>
+        /// <param name="cmdlet">Calling cmdlet for logging</param>
+        /// <returns>List of detected ADK installations</returns>
+        private static List<ADKInfo> DetectADKViaFileSystem(PSCmdlet cmdlet)
+        {
+            var installations = new List<ADKInfo>();
+
+            // Common ADK installation paths
+            var commonPaths = new[]
+            {
+                @"C:\Program Files (x86)\Windows Kits",
+                @"C:\Program Files\Windows Kits",
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) + @"\Windows Kits",
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) + @"\Windows Kits"
+            };
+
+            foreach (var basePath in commonPaths.Distinct())
+            {
+                try
+                {
+                    if (!Directory.Exists(basePath)) continue;
+
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Scanning directory: {basePath}");
+
+                    var versionDirs = Directory.GetDirectories(basePath)
+                        .Where(dir => Path.GetFileName(dir).All(c => char.IsDigit(c) || c == '.'))
+                        .OrderByDescending(dir => dir);
+
+                    foreach (var versionDir in versionDirs)
+                    {
+                        var assessmentToolsPath = Path.Combine(versionDir, "Assessment and Deployment Kit");
+                        var winpeAddonPath = Path.Combine(versionDir, "Windows Preinstallation Environment");
+
+                        if (Directory.Exists(assessmentToolsPath))
+                        {
+                            var version = Path.GetFileName(versionDir);
+                            var adkInfo = new ADKInfo
+                            {
+                                DisplayName = $"Windows Assessment and Deployment Kit - Windows {version}",
+                                Version = TryParseVersion(version),
+                                InstallationPath = new DirectoryInfo(versionDir), // Use the version directory, not the subfolder
+                                HasWinPEAddon = Directory.Exists(winpeAddonPath),
+                                HasDeploymentTools = File.Exists(Path.Combine(assessmentToolsPath, "Deployment Tools", "DISM", "dism.exe"))
+                            };
+
+                            installations.Add(adkInfo);
+                            LoggingService.WriteVerbose(cmdlet, ServiceName,
+                                $"Found ADK via file system: {adkInfo.DisplayName} at {adkInfo.InstallationPath.FullName}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Failed to scan directory {basePath}: {ex.Message}");
+                }
+            }
+
+            return installations;
         }
 
         /// <summary>
@@ -181,9 +280,11 @@ namespace PSWindowsImageTools.Services
             var adkPatterns = new[]
             {
                 @"Windows Assessment and Deployment Kit",
+                @"Windows Assessment And Deployment Kit", // Exact match for the actual name
                 @"Windows ADK",
                 @"Microsoft Windows Assessment and Deployment Kit",
-                @"Windows Kits.*Assessment.*Deployment"
+                @"Windows Kits.*Assessment.*Deployment",
+                @"Windows Assessment And Deployment Kit Windows Preinstallation Environment Add-ons" // WinPE add-on
             };
 
             return adkPatterns.Any(pattern => Regex.IsMatch(displayName, pattern, RegexOptions.IgnoreCase));
@@ -461,6 +562,38 @@ namespace PSWindowsImageTools.Services
                 LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Failed to find language packs: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Attempts to parse a version string, returning a default version if parsing fails
+        /// </summary>
+        /// <param name="versionString">Version string to parse</param>
+        /// <returns>Parsed version or default version</returns>
+        private static Version TryParseVersion(string versionString)
+        {
+            if (string.IsNullOrWhiteSpace(versionString))
+                return new Version(0, 0);
+
+            // Clean up the version string - remove non-numeric characters except dots
+            var cleanVersion = new string(versionString.Where(c => char.IsDigit(c) || c == '.').ToArray());
+
+            // Ensure we have at least major.minor format
+            var parts = cleanVersion.Split(new char[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return new Version(0, 0);
+
+            if (parts.Length == 1)
+                cleanVersion = $"{parts[0]}.0";
+
+            if (Version.TryParse(cleanVersion, out var version))
+                return version;
+
+            // If all else fails, try to extract just the major version number
+            var majorMatch = System.Text.RegularExpressions.Regex.Match(versionString, @"(\d+)");
+            if (majorMatch.Success && int.TryParse(majorMatch.Groups[1].Value, out var major))
+                return new Version(major, 0);
+
+            return new Version(0, 0);
         }
     }
 }
