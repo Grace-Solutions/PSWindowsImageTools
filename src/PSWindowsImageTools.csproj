@@ -14,13 +14,12 @@
     <Copyright>Copyright © 2025</Copyright>
     <OutputPath>..\Artifacts\bin\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <!-- Copy essential dependencies including SQLite native libraries -->
+    <!-- Copy essential dependencies -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <CopyLocalRuntimeTargetAssets>true</CopyLocalRuntimeTargetAssets>
     <ExcludeAssets>build;buildMultitargeting;buildTransitive;analyzers</ExcludeAssets>
     <UseWindowsForms>false</UseWindowsForms>
     <UseWPF>false</UseWPF>
-    <SQLiteNetStandardRuntime>true</SQLiteNetStandardRuntime>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
     <!-- Exclude debug and configuration files from output -->
     <DebugType>none</DebugType>
@@ -41,10 +40,7 @@
     <PackageReference Include="Microsoft.Dism" Version="3.3.12" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
-    <PackageReference Include="System.Data.SQLite" Version="1.0.118">
-      <IncludeAssets>all</IncludeAssets>
-      <PrivateAssets>none</PrivateAssets>
-    </PackageReference>
+
 
     <!-- System libraries - provided by OS/runtime, don't copy -->
     <PackageReference Include="System.Security.Cryptography.Algorithms" Version="4.3.1">
@@ -74,7 +70,7 @@
     <ItemGroup>
       <!-- Remove reference assemblies folder -->
       <RefFolderToDelete Include="$(OutputPath)ref\**\*" />
-      <!-- Remove non-Windows runtime folders, keep only win-x64 and win-x86 for SQLite -->
+      <!-- Remove non-Windows runtime folders -->
       <RuntimeFolderToDelete Include="$(OutputPath)runtimes\debian*\**\*" />
       <RuntimeFolderToDelete Include="$(OutputPath)runtimes\fedora*\**\*" />
       <RuntimeFolderToDelete Include="$(OutputPath)runtimes\linux*\**\*" />
@@ -88,8 +84,8 @@
       <PowerShellAssembliesToDelete Include="$(OutputPath)System.Management.Automation.dll" />
       <PowerShellAssembliesToDelete Include="$(OutputPath)Microsoft.PowerShell.*.dll" />
 
-      <!-- Remove .NET runtime assemblies (keep only essential SQLite, Registry, and Text dependencies) -->
-      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Data.SQLite.dll;$(OutputPath)System.Data.SQLite.EF6.dll;$(OutputPath)System.Data.SQLite.Linq.dll;$(OutputPath)System.Text.Json.dll;$(OutputPath)System.Text.Encoding.CodePages.dll" />
+      <!-- Remove .NET runtime assemblies (keep only essential Registry and Text dependencies) -->
+      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Text.Json.dll;$(OutputPath)System.Text.Encoding.CodePages.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" Exclude="$(OutputPath)Microsoft.Win32.Registry.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.CSharp.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.VisualBasic.*.dll" />
@@ -99,8 +95,10 @@
       <!-- Remove Entity Framework (not needed) -->
       <EntityFrameworkToDelete Include="$(OutputPath)EntityFramework*.dll" />
 
-      <!-- Remove additional unnecessary libraries but keep SQLite.Interop.dll and Serilog.dll -->
+      <!-- Remove additional unnecessary libraries but keep Serilog.dll -->
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)SQLitePCLRaw.*.dll" />
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)System.Data.SQLite*.dll" />
+      <UnnecessaryLibrariesToDelete Include="$(OutputPath)SQLite.Interop.dll" />
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)Joveler.DynLoader.dll" />
       <UnnecessaryLibrariesToDelete Include="$(OutputPath)ManagedWimLib.dll" />
 

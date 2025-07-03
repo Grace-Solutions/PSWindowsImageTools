@@ -256,18 +256,7 @@ namespace PSWindowsImageTools.Cmdlets
                     }
                 }
 
-                // Store in database if enabled
-                if (!ConfigurationService.IsDatabaseDisabled)
-                {
-                    try
-                    {
-                        StoreImageInfoInDatabase(imageInfoList);
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.WriteWarning(this, "GetImageList", $"Failed to store image info in database: {ex.Message}");
-                    }
-                }
+
 
                 var duration = DateTime.UtcNow - startTime;
                 LoggingService.LogOperationComplete(this, "GetImageList", duration, 
@@ -309,67 +298,7 @@ namespace PSWindowsImageTools.Cmdlets
             return inputPath;
         }
 
-        /// <summary>
-        /// Stores image information in the database using bulk insert
-        /// </summary>
-        /// <param name="imageInfoList">List of image information to store</param>
-        private void StoreImageInfoInDatabase(List<WindowsImageInfo> imageInfoList)
-        {
-            using (var dbService = ConfigurationService.GetDatabaseService())
-            {
-                if (dbService == null) return;
 
-                LoggingService.WriteVerbose(this, "DatabaseService", $"Starting bulk insert of {imageInfoList.Count} image records");
-
-                try
-                {
-                    // Create DataTable for bulk insert
-                    var dataTable = dbService.CreateBuildsDataTable();
-                    var insertedCount = 0;
-
-                    // Use already calculated hash if available
-                    var sourceHash = imageInfoList.Count > 0 ? imageInfoList[0].SourceHash : "";
-
-                    foreach (var imageInfo in imageInfoList)
-                    {
-                        var row = dataTable.NewRow();
-                        row["Id"] = Guid.NewGuid().ToString();
-                        row["SourceImagePath"] = imageInfo.SourcePath ?? "";
-                        row["SourceImageHash"] = sourceHash;
-                        row["SourceImageHashAlgorithm"] = "SHA256";
-                        row["Status"] = "Inventoried";
-                        row["ImageCount"] = 1;
-                        row["DurationMs"] = 0;
-                        row["RecipeJson"] = "{\"operation\":\"inventory\"}";
-
-                        // Store inventory data as JSON if available
-                        if (imageInfo.AdvancedInfo != null)
-                        {
-                            var inventoryJson = System.Text.Json.JsonSerializer.Serialize(imageInfo.AdvancedInfo);
-                            row["InventoryJson"] = inventoryJson;
-                        }
-
-                        row["CreatedUtc"] = DateTime.UtcNow;
-                        row["ModifiedUtc"] = DateTime.UtcNow;
-                        dataTable.Rows.Add(row);
-                        insertedCount++;
-                    }
-
-                    // Perform bulk insert
-                    var rowsInserted = dbService.BulkInsert("Builds", dataTable);
-                    LoggingService.WriteVerbose(this, "DatabaseService", $"Successfully inserted {rowsInserted} rows into Builds table");
-
-                    if (rowsInserted != imageInfoList.Count)
-                    {
-                        LoggingService.WriteWarning(this, "DatabaseService", $"Expected to insert {imageInfoList.Count} rows but inserted {rowsInserted}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LoggingService.WriteError(this, "DatabaseService", $"Failed to store image records in database", ex);
-                }
-            }
-        }
 
         /// <summary>
         /// Calculates SHA256 hash of a file

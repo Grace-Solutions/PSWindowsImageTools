@@ -569,50 +569,7 @@ $autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "
 $mounted | Install-AutopilotConfiguration -Configuration $autopilot
 ```
 
----
 
-## Database Operations
-
-### Set-WindowsImageDatabaseConfiguration
-Configure SQLite database settings for operation tracking.
-
-```powershell
-Set-WindowsImageDatabaseConfiguration -Path <String> [-ConnectionTimeout <Int32>]
-```
-
-### New-WindowsImageDatabase
-Initialize database schema for tracking operations.
-
-```powershell
-New-WindowsImageDatabase [-Force]
-```
-
-### Search-WindowsImageDatabase
-Query operation history and tracking data.
-
-```powershell
-Search-WindowsImageDatabase [-Operation <String>] [-StartDate <DateTime>] [-EndDate <DateTime>] [-Status <String>]
-```
-
-### Clear-WindowsImageDatabase
-Reset database and remove all tracking data.
-
-```powershell
-Clear-WindowsImageDatabase [-Force]
-```
-
-**Examples:**
-```powershell
-# Setup database tracking
-Set-WindowsImageDatabaseConfiguration -Path "C:\Deployment\tracking.db"
-New-WindowsImageDatabase
-
-# Query recent operations
-$recentOps = Search-WindowsImageDatabase -StartDate (Get-Date).AddDays(-7)
-
-# Clear database
-Clear-WindowsImageDatabase -Force
-```
 
 ---
 

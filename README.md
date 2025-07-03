@@ -107,13 +107,7 @@ $mounted | Dismount-WindowsImageList -Save
 | `Install-AutopilotConfiguration` | Apply to mounted images |
 | `New-AutopilotConfiguration` | Create new configuration |
 
-### **Database & Tracking**
-| Cmdlet | Description |
-|--------|-------------|
-| `Set-WindowsImageDatabaseConfiguration` | Configure database settings |
-| `New-WindowsImageDatabase` | Initialize database schema |
-| `Search-WindowsImageDatabase` | Query operation history |
-| `Clear-WindowsImageDatabase` | Reset database |
+
 
 ### **Release Information**
 | Cmdlet | Description |

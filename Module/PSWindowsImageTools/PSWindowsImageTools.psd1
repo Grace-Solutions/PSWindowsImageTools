@@ -21,7 +21,7 @@
     Copyright = 'Copyright (c) 2025 PSWindowsImageTools. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'PowerShell module for Windows image customization and Windows Update management. Provides comprehensive tools for working with ISO, WIM, and ESD files, native DISM operations, Windows Update catalog integration, and database-driven workflow management.'
+    Description = 'PowerShell module for Windows image customization and Windows Update management. Provides comprehensive tools for working with ISO, WIM, and ESD files, native DISM operations, and Windows Update catalog integration.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -84,11 +84,7 @@
         # AppX Package Management
         'Remove-AppXProvisionedPackageList',
 
-        # Database Operations
-        'Search-WindowsImageDatabase',
-        'Set-WindowsImageDatabaseConfiguration',
-        'New-WindowsImageDatabase',
-        'Clear-WindowsImageDatabase',
+
 
         # Registry Operations
         'Get-RegistryOperationList',
@@ -119,7 +115,7 @@
     PrivateData = @{
         PSData = @{
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags = @('Windows', 'Image', 'WIM', 'ESD', 'ISO', 'DISM', 'Customization', 'Updates', 'WindowsUpdate', 'Catalog', 'Database', 'PowerShell')
+            Tags = @('Windows', 'Image', 'WIM', 'ESD', 'ISO', 'DISM', 'Customization', 'Updates', 'WindowsUpdate', 'Catalog', 'PowerShell')
 
             # A URL to the license for this module.
             LicenseUri = 'https://www.gnu.org/licenses/gpl-3.0.html'
@@ -135,10 +131,8 @@ NEW FEATURES:
 • Complete Windows Update architecture redesign with proper object models
 • Search-WindowsUpdateCatalog: Search Microsoft Update Catalog with filters
 • Save-WindowsUpdateCatalogResult: Download catalog results to packages
-• Search-WindowsImageDatabase: Search local database for cached updates
 • Install-WindowsImageUpdate: Install packages on mounted images (redesigned)
 • Full pipeline support: Search → Download → Install workflow
-• Database integration with ObjectType queries (Updates, Images, Operations, Inventory)
 
 IMPROVEMENTS:
 • Migrated to .NET Standard 2.0 for better PowerShell compatibility
@@ -152,7 +146,7 @@ IMPROVEMENTS:
 ARCHITECTURE:
 • Clean separation between catalog results and downloaded packages
 • Type-safe object models with proper PowerShell patterns
-• Offline database searches complement online catalog searches
+
 • Comprehensive examples and workflow documentation
 '@
         }

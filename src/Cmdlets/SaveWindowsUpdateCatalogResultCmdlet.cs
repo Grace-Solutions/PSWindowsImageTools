@@ -50,11 +50,7 @@ namespace PSWindowsImageTools.Cmdlets
         [Parameter(Mandatory = false)]
         public SwitchParameter Verify { get; set; }
 
-        /// <summary>
-        /// Skip database update after download
-        /// </summary>
-        [Parameter(Mandatory = false)]
-        public SwitchParameter SkipDatabase { get; set; }
+
 
         /// <summary>
         /// Enable resume capability for failed downloads
@@ -130,11 +126,7 @@ namespace PSWindowsImageTools.Cmdlets
                 // Download packages
                 var packages = DownloadPackages(downloadableResults);
 
-                // Update database if not skipped
-                if (!SkipDatabase.IsPresent && !ConfigurationService.IsDatabaseDisabled)
-                {
-                    UpdateDatabase(packages);
-                }
+
 
                 // Output results
                 foreach (var package in packages)
@@ -344,48 +336,7 @@ namespace PSWindowsImageTools.Cmdlets
             }
         }
 
-        /// <summary>
-        /// Updates the database with package information
-        /// </summary>
-        private void UpdateDatabase(List<WindowsUpdatePackage> packages)
-        {
-            try
-            {
-                LoggingService.WriteVerbose(this, $"Updating database with download information for {packages.Count} packages");
 
-                // Convert packages back to WindowsUpdate objects for database compatibility
-                var updates = packages.Select(ConvertToWindowsUpdate).ToList();
-
-                using var databaseService = new WindowsUpdateDatabaseService();
-                var updatedCount = databaseService.StoreUpdates(updates, "Downloaded", this);
-
-                LoggingService.WriteVerbose(this, $"Updated {updatedCount} database records");
-            }
-            catch (Exception ex)
-            {
-                LoggingService.WriteWarning(this, $"Failed to update database: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Converts WindowsUpdatePackage back to WindowsUpdate for database compatibility
-        /// </summary>
-        private WindowsUpdate ConvertToWindowsUpdate(WindowsUpdatePackage package)
-        {
-            return new WindowsUpdate
-            {
-                UpdateId = package.UpdateId,
-                KBNumber = package.KBNumber,
-                Title = package.Title,
-                Products = string.Join(", ", package.SourceCatalogResult.Products),
-                Classification = package.SourceCatalogResult.Classification,
-                LastUpdated = package.SourceCatalogResult.LastModified,
-                SizeInBytes = package.SourceCatalogResult.Size,
-                DownloadUrls = package.SourceCatalogResult.DownloadUrls.Select(uri => uri.OriginalString).ToList(),
-                Architecture = package.SourceCatalogResult.Architecture,
-                LocalFilePath = package.LocalFile.FullName
-            };
-        }
 
         /// <summary>
         /// Formats a byte size into the most appropriate unit (B, KB, MB, GB, TB)

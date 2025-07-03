@@ -8,39 +8,6 @@ namespace PSWindowsImageTools.Services
     /// </summary>
     public static class ConfigurationService
     {
-        private static string? _databasePath;
-        private static bool _databaseDisabled = false;
-
-        /// <summary>
-        /// Gets the default database path
-        /// </summary>
-        public static string DefaultDatabasePath
-        {
-            get
-            {
-                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var moduleDataPath = Path.Combine(appDataPath, "PSWindowsImageTools");
-                return Path.Combine(moduleDataPath, "image.db");
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the current database path
-        /// </summary>
-        public static string DatabasePath
-        {
-            get => _databasePath ?? DefaultDatabasePath;
-            set => _databasePath = value;
-        }
-
-        /// <summary>
-        /// Gets or sets whether the database is disabled
-        /// </summary>
-        public static bool IsDatabaseDisabled
-        {
-            get => _databaseDisabled;
-            set => _databaseDisabled = value;
-        }
 
         /// <summary>
         /// Gets the default mount root directory
@@ -59,38 +26,7 @@ namespace PSWindowsImageTools.Services
         /// </summary>
         public static void ResetToDefaults()
         {
-            _databasePath = null;
-            _databaseDisabled = false;
-        }
-
-        /// <summary>
-        /// Validates the database path and creates directory if needed
-        /// </summary>
-        /// <param name="path">Path to validate</param>
-        /// <returns>True if path is valid and accessible</returns>
-        public static bool ValidateDatabasePath(string path)
-        {
-            try
-            {
-                var directory = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // Test write access by creating a temporary file
-                var testFile = Path.Combine(Path.GetDirectoryName(path) ?? Path.GetTempPath(), 
-                    $"test_{Guid.NewGuid()}.tmp");
-                
-                File.WriteAllText(testFile, "test");
-                File.Delete(testFile);
-
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            // No configuration to reset currently
         }
 
         /// <summary>
@@ -120,19 +56,7 @@ namespace PSWindowsImageTools.Services
             }
         }
 
-        /// <summary>
-        /// Gets a database service instance using current configuration
-        /// </summary>
-        /// <returns>DatabaseService instance or null if database is disabled</returns>
-        public static DatabaseService? GetDatabaseService()
-        {
-            if (_databaseDisabled)
-            {
-                return null;
-            }
 
-            return new DatabaseService(DatabasePath);
-        }
 
         /// <summary>
         /// Expands environment variables in a path
@@ -252,8 +176,7 @@ namespace PSWindowsImageTools.Services
                 Description = "PowerShell module for Windows image customization and management",
                 Author = "PSWindowsImageTools",
                 Copyright = "Copyright (c) 2025 PSWindowsImageTools. All rights reserved.",
-                DatabasePath = DatabasePath,
-                IsDatabaseDisabled = IsDatabaseDisabled,
+
                 DefaultMountRootDirectory = DefaultMountRootDirectory
             };
         }
@@ -269,8 +192,6 @@ namespace PSWindowsImageTools.Services
         public string Description { get; set; } = string.Empty;
         public string Author { get; set; } = string.Empty;
         public string Copyright { get; set; } = string.Empty;
-        public string DatabasePath { get; set; } = string.Empty;
-        public bool IsDatabaseDisabled { get; set; }
         public string DefaultMountRootDirectory { get; set; } = string.Empty;
     }
 }
