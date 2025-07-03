@@ -59,7 +59,7 @@ namespace PSWindowsImageTools.Services
                         ProductType = dismImageInfo.ProductType ?? string.Empty,
                         InstallationType = dismImageInfo.InstallationType ?? string.Empty,
                         Edition = dismImageInfo.EditionId ?? string.Empty,
-                        Version = dismImageInfo.ProductVersion?.ToString() ?? string.Empty,
+                        Version = FormatUtilityService.ParseVersion(dismImageInfo.ProductVersion?.ToString() ?? string.Empty),
                         Build = dismImageInfo.ProductVersion?.Build.ToString() ?? string.Empty,
                         ServicePackLevel = dismImageInfo.SpLevel.ToString(),
                         DefaultLanguage = dismImageInfo.DefaultLanguage?.Name ?? string.Empty,

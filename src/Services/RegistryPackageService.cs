@@ -214,6 +214,7 @@ namespace PSWindowsImageTools.Services
 
         /// <summary>
         /// Reads Windows version information from SOFTWARE hive
+        /// Dynamically enumerates all values from Microsoft\Windows NT\CurrentVersion
         /// </summary>
         private Dictionary<string, object> ReadWindowsVersionInfo(RegistryHive softwareHive, PSCmdlet? cmdlet)
         {
@@ -224,29 +225,29 @@ namespace PSWindowsImageTools.Services
                 var versionKey = softwareHive.GetKey(@"Microsoft\Windows NT\CurrentVersion");
                 if (versionKey != null)
                 {
-                    var versionValues = new[]
+                    // Dynamically enumerate all values from the CurrentVersion key
+                    foreach (var keyValue in versionKey.Values)
                     {
-                        "ProductName", "DisplayVersion", "CurrentBuild", "CurrentBuildNumber",
-                        "ReleaseId", "BuildBranch", "InstallationType", "EditionID",
-                        "RegisteredOwner", "RegisteredOrganization", "CurrentVersion"
-                    };
-
-                    foreach (var valueName in versionValues)
-                    {
-                        var keyValue = versionKey.Values.FirstOrDefault(v => v.ValueName == valueName);
-                        if (keyValue != null && !string.IsNullOrEmpty(keyValue.ValueData))
+                        if (!string.IsNullOrEmpty(keyValue.ValueName) &&
+                            keyValue.ValueData != null &&
+                            !string.IsNullOrEmpty(keyValue.ValueData.ToString()))
                         {
-                            versionInfo[$"Windows{valueName}"] = keyValue.ValueData;
+                            versionInfo[keyValue.ValueName] = keyValue.ValueData;
                         }
                     }
 
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                        $"Read Windows version information");
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Read {versionInfo.Count} values from CurrentVersion key");
+                }
+                else
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        "CurrentVersion registry key not found");
                 }
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName, 
+                LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Error reading Windows version info: {ex.Message}");
             }
 
@@ -255,42 +256,79 @@ namespace PSWindowsImageTools.Services
 
         /// <summary>
         /// Reads installed programs information from SOFTWARE hive
+        /// Scans both regular and WOW6432Node uninstall keys for complete software detection
         /// </summary>
         private Dictionary<string, object> ReadInstalledProgramsInfo(RegistryHive softwareHive, PSCmdlet? cmdlet)
         {
             var programsInfo = new Dictionary<string, object>();
+            int totalProgramCount = 0;
 
             try
             {
-                var uninstallKey = softwareHive.GetKey(@"Microsoft\Windows\CurrentVersion\Uninstall");
-                if (uninstallKey != null)
+                // Define both uninstall key paths to scan
+                var uninstallPaths = new[]
                 {
-                    var programCount = uninstallKey.SubKeys.Count;
-                    programsInfo["InstalledProgramCount"] = programCount;
+                    @"Microsoft\Windows\CurrentVersion\Uninstall",           // 64-bit and native programs
+                    @"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" // 32-bit programs on 64-bit systems
+                };
 
-                    // Get sample program names
-                    var samplePrograms = uninstallKey.SubKeys
-                        .Take(10)
-                        .Select(sk => sk.Values.FirstOrDefault(v => v.ValueName == "DisplayName")?.ValueData)
-                        .Where(name => !string.IsNullOrEmpty(name))
-                        .ToList();
-
-                    if (samplePrograms.Any())
+                foreach (var uninstallPath in uninstallPaths)
+                {
+                    try
                     {
-                        programsInfo["SampleInstalledPrograms"] = samplePrograms;
-                    }
+                        var uninstallKey = softwareHive.GetKey(uninstallPath);
+                        if (uninstallKey != null)
+                        {
+                            var programCount = uninstallKey.SubKeys.Count;
+                            totalProgramCount += programCount;
 
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                        $"Found {programCount} installed programs");
+                            LoggingService.WriteVerbose(cmdlet, ServiceName,
+                                $"Found {programCount} programs in {uninstallPath}");
+                        }
+                        else
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName,
+                                $"Uninstall key not found: {uninstallPath}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName,
+                            $"Error reading {uninstallPath}: {ex.Message}");
+                    }
                 }
+
+                // Set the combined results
+                programsInfo["InstalledProgramCount"] = totalProgramCount;
+                programsInfo["InstalledProgramCount64Bit"] = GetProgramCountFromPath(softwareHive, @"Microsoft\Windows\CurrentVersion\Uninstall");
+                programsInfo["InstalledProgramCount32Bit"] = GetProgramCountFromPath(softwareHive, @"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall");
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Found {totalProgramCount} total installed programs ({programsInfo["InstalledProgramCount64Bit"]} 64-bit, {programsInfo["InstalledProgramCount32Bit"]} 32-bit)");
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName, 
+                LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Error reading installed programs: {ex.Message}");
             }
 
             return programsInfo;
+        }
+
+        /// <summary>
+        /// Helper method to get program count from a specific uninstall path
+        /// </summary>
+        private int GetProgramCountFromPath(RegistryHive softwareHive, string uninstallPath)
+        {
+            try
+            {
+                var uninstallKey = softwareHive.GetKey(uninstallPath);
+                return uninstallKey?.SubKeys.Count ?? 0;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>

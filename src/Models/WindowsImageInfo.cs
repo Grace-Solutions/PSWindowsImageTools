@@ -41,7 +41,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Version information
         /// </summary>
-        public string Version { get; set; } = string.Empty;
+        public Version? Version { get; set; }
 
         /// <summary>
         /// Build number
@@ -52,6 +52,33 @@ namespace PSWindowsImageTools.Models
         /// Service pack level
         /// </summary>
         public string ServicePackLevel { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Full 4-point Windows version combining DISM version with UBR from registry
+        /// Returns the complete version (e.g., 10.0.22631.2428) when advanced info is available,
+        /// otherwise returns the DISM version (e.g., 10.0.22631.0)
+        /// </summary>
+        public Version? FullVersion
+        {
+            get
+            {
+                // If we have advanced registry info with UBR, combine it with the DISM version
+                if (AdvancedInfo?.RegistryInfo?.TryGetValue("UBR", out var ubrValue) == true &&
+                    Version != null &&
+                    ubrValue != null)
+                {
+                    var ubrString = ubrValue.ToString();
+                    if (!string.IsNullOrEmpty(ubrString) && int.TryParse(ubrString, out var ubr))
+                    {
+                        // Combine DISM version with UBR to create full 4-point version
+                        return new Version(Version.Major, Version.Minor, Version.Build, ubr);
+                    }
+                }
+
+                // Fall back to the DISM version if UBR is not available
+                return Version;
+            }
+        }
 
         /// <summary>
         /// Installation type (Client, Server, etc.)

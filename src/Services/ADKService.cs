@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Win32;
 using PSWindowsImageTools.Models;
 
 namespace PSWindowsImageTools.Services
@@ -30,67 +31,34 @@ namespace PSWindowsImageTools.Services
             try
             {
                 // Try registry detection first (preferred method)
-                LoggingService.WriteVerbose(cmdlet, ServiceName, "Attempting registry detection first");
+                LoggingService.WriteVerbose(cmdlet, ServiceName, "Attempting registry detection using native APIs");
 
-                // Try registry detection
-                if (true)
+                try
                 {
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, "No ADK found via file system, trying registry detection");
+                    var uninstallEntries = RegistryService.EnumerateUninstallEntries(cmdlet);
 
-                    // Check both 32-bit and 64-bit registry locations
-                    var registryPaths = new[]
+                    foreach (var entry in uninstallEntries)
                     {
-                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-                        @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-                    };
-
-                    foreach (var registryPath in registryPaths)
-                    {
-                        try
-                        {
-                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Scanning registry path: {registryPath}");
-
-                            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Default).OpenSubKey(registryPath);
-                            if (baseKey == null)
-                            {
-                                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Registry path not accessible: {registryPath}");
-                                continue;
-                            }
-
-                    foreach (var subKeyName in baseKey.GetSubKeyNames())
-                    {
-                        using var subKey = baseKey.OpenSubKey(subKeyName);
-                        if (subKey == null) continue;
-
-                        var displayName = subKey.GetValue("DisplayName")?.ToString() ?? "";
-
-                        // Debug logging to see what we're checking
-                        if (!string.IsNullOrEmpty(displayName))
-                        {
-                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Checking display name: '{displayName}'");
-                        }
+                        var properties = entry.Value;
+                        var displayName = properties.TryGetValue("DisplayName", out var dn) ? dn : "";
 
                         // Look for ADK installations
                         if (IsADKInstallation(displayName))
                         {
-                            var adkInfo = ParseADKRegistryEntry(subKey, registryPath + "\\" + subKeyName, cmdlet);
+                            var adkInfo = ParseADKRegistryEntry(properties, cmdlet);
                             if (adkInfo != null)
                             {
                                 adkInstallations.Add(adkInfo);
-                                LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                                    $"Found ADK installation: {adkInfo.DisplayName} at {adkInfo.InstallationPath?.FullName}");
                             }
                         }
                     }
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.WriteWarning(cmdlet, ServiceName,
-                            $"Failed to access registry path {registryPath}: {ex.Message}");
-                        continue;
-                    }
                 }
+                catch (Exception ex)
+                {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Registry detection failed: {ex.Message}");
                 }
+
+
 
                 // Try file system detection if registry detection found nothing
                 if (adkInstallations.Count == 0)
@@ -293,19 +261,20 @@ namespace PSWindowsImageTools.Services
         /// <summary>
         /// Parses ADK information from a registry entry
         /// </summary>
-        private ADKInfo? ParseADKRegistryEntry(RegistryKey registryKey, string keyPath, PSCmdlet? cmdlet)
+        private ADKInfo? ParseADKRegistryEntry(Dictionary<string, string> properties, PSCmdlet? cmdlet)
         {
             try
             {
-                var displayName = registryKey.GetValue("DisplayName")?.ToString() ?? "";
-                var installLocation = registryKey.GetValue("InstallLocation")?.ToString();
-                var versionString = registryKey.GetValue("DisplayVersion")?.ToString();
-                var publisher = registryKey.GetValue("Publisher")?.ToString() ?? "";
-                var installDateString = registryKey.GetValue("InstallDate")?.ToString();
+                var displayName = properties.TryGetValue("DisplayName", out var dn) ? dn : "";
+                var installLocation = properties.TryGetValue("InstallLocation", out var il) ? il : "";
+                var versionString = properties.TryGetValue("DisplayVersion", out var vs) ? vs : "";
+                var publisher = properties.TryGetValue("Publisher", out var pub) ? pub : "";
+                var installDateString = properties.TryGetValue("InstallDate", out var ids) ? ids : "";
+                var registryPath = properties.TryGetValue("RegistryPath", out var rp) ? rp : "";
 
                 if (string.IsNullOrEmpty(installLocation) || !Directory.Exists(installLocation))
                 {
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, 
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
                         $"Skipping ADK entry - invalid install location: {installLocation}");
                     return null;
                 }
@@ -315,7 +284,7 @@ namespace PSWindowsImageTools.Services
                     DisplayName = displayName,
                     InstallationPath = new DirectoryInfo(installLocation),
                     Publisher = publisher,
-                    RegistryKey = keyPath
+                    RegistryKey = registryPath
                 };
 
                 // Parse version
