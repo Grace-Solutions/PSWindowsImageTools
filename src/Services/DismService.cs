@@ -100,16 +100,8 @@ namespace PSWindowsImageTools.Services
         {
             try
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    "Delegating advanced info gathering to specialized AdvancedImageInfoService");
-                LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    "This service orchestrates: DISM API (features/packages/drivers), Registry API (offline registry), File System API");
-
                 using var advancedInfoService = new AdvancedImageInfoService();
                 var advancedInfo = advancedInfoService.GetAdvancedImageInfo(imagePath, imageIndex, mountPath, cmdlet);
-
-                LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    "Advanced information gathered successfully using specialized services");
 
                 return advancedInfo;
             }

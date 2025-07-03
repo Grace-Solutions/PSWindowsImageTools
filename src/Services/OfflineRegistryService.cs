@@ -16,6 +16,32 @@ namespace PSWindowsImageTools.Services
         private bool _disposed = false;
 
         /// <summary>
+        /// Reads only essential Windows version information from the registry
+        /// This method focuses only on the CurrentVersion key for version details
+        /// </summary>
+        /// <param name="mountPath">Path where the Windows image is mounted</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>Dictionary containing Windows version registry information</returns>
+        public Dictionary<string, object> ReadWindowsVersionInfo(string mountPath, PSCmdlet? cmdlet = null)
+        {
+            try
+            {
+                using var registryPackageService = new RegistryPackageService();
+                return registryPackageService.ReadWindowsVersionOnly(mountPath, cmdlet);
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName,
+                    $"Registry reading failed: {ex.Message}");
+
+                return new Dictionary<string, object>
+                {
+                    ["RegistryReadError"] = ex.Message
+                };
+            }
+        }
+
+        /// <summary>
         /// Reads offline registry information using the Registry package (preferred method)
         /// This method does NOT require mounting registry hives
         /// </summary>
@@ -33,7 +59,7 @@ namespace PSWindowsImageTools.Services
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName, 
+                LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Registry package reading failed, falling back to native API: {ex.Message}");
 
                 // Fallback to native API if Registry package fails

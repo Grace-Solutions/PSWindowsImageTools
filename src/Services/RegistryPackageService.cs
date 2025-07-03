@@ -17,6 +17,46 @@ namespace PSWindowsImageTools.Services
         private bool _disposed = false;
 
         /// <summary>
+        /// Reads only essential Windows version information from the SOFTWARE hive
+        /// This approach focuses only on the CurrentVersion registry key
+        /// </summary>
+        /// <param name="mountPath">Path where the Windows image is mounted</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>Dictionary containing Windows version information</returns>
+        public Dictionary<string, object> ReadWindowsVersionOnly(string mountPath, PSCmdlet? cmdlet = null)
+        {
+            var registryInfo = new Dictionary<string, object>();
+
+            try
+            {
+                var hives = GetRegistryHivePaths(mountPath);
+
+                // Only read SOFTWARE hive for Windows version information
+                if (File.Exists(hives["SOFTWARE"]))
+                {
+                    var versionInfo = ReadWindowsCurrentVersion(hives["SOFTWARE"], cmdlet);
+                    foreach (var item in versionInfo)
+                    {
+                        registryInfo[item.Key] = item.Value;
+                    }
+                }
+                else
+                {
+                    registryInfo["SOFTWAREHiveExists"] = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName,
+                    $"Failed to read Windows version info: {ex.Message}");
+
+                registryInfo["RegistryReadError"] = ex.Message;
+            }
+
+            return registryInfo;
+        }
+
+        /// <summary>
         /// Reads comprehensive registry information from offline Windows image using Registry package
         /// This approach does NOT require mounting registry hives
         /// </summary>
@@ -206,6 +246,51 @@ namespace PSWindowsImageTools.Services
             }
 
             return systemInfo;
+        }
+
+        /// <summary>
+        /// Reads only Windows CurrentVersion information from SOFTWARE hive file
+        /// This is a simplified version that only reads essential version data
+        /// </summary>
+        /// <param name="softwareHivePath">Path to SOFTWARE hive file</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>Dictionary containing Windows version information</returns>
+        private Dictionary<string, object> ReadWindowsCurrentVersion(string softwareHivePath, PSCmdlet? cmdlet)
+        {
+            var versionInfo = new Dictionary<string, object>();
+
+            try
+            {
+                var softwareHive = new RegistryHive(softwareHivePath);
+                softwareHive.ParseHive();
+
+                var versionKey = softwareHive.GetKey(@"Microsoft\Windows NT\CurrentVersion");
+                if (versionKey != null)
+                {
+                    // Only read essential version values
+                    foreach (var keyValue in versionKey.Values)
+                    {
+                        if (!string.IsNullOrEmpty(keyValue.ValueName) &&
+                            keyValue.ValueData != null &&
+                            !string.IsNullOrEmpty(keyValue.ValueData.ToString()))
+                        {
+                            versionInfo[keyValue.ValueName] = keyValue.ValueData;
+                        }
+                    }
+                }
+                else
+                {
+                    versionInfo["CurrentVersionKeyNotFound"] = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName,
+                    $"Error reading SOFTWARE hive: {ex.Message}");
+                versionInfo["RegistryReadError"] = ex.Message;
+            }
+
+            return versionInfo;
         }
 
         /// <summary>
