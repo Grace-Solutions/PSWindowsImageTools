@@ -138,7 +138,7 @@ Write-Output "`n=== Test 7: Exporting with Different Encodings ==="
 
 try {
     $testFile = Join-Path $testDir "unattend-utf8.xml"
-    $exportedFile = $config | Export-UnattendXMLConfiguration -Path $testFile -Encoding UTF8 -PassThru -Verbose
+    $exportedFile = $config | Export-UnattendXMLConfiguration -OutputFile $testFile -Encoding UTF8 -PassThru -Verbose
     Write-Output "Exported UnattendXML configuration:"
     Write-Output "  File: $($exportedFile.FullName)"
     Write-Output "  Size: $($exportedFile.Length) bytes"
@@ -146,7 +146,7 @@ try {
     
     # Test different encoding
     $testFileUtf16 = Join-Path $testDir "unattend-utf16.xml"
-    $exportedFileUtf16 = $config | Export-UnattendXMLConfiguration -Path $testFileUtf16 -Encoding UTF16 -PassThru -Verbose
+    $exportedFileUtf16 = $config | Export-UnattendXMLConfiguration -OutputFile $testFileUtf16 -Encoding UTF16 -PassThru -Verbose
     Write-Output "  UTF16 File: $($exportedFileUtf16.FullName)"
     Write-Output "  UTF16 Size: $($exportedFileUtf16.Length) bytes"
 } catch {
@@ -156,7 +156,7 @@ try {
 Write-Output "`n=== Test 8: Loading and Exploring Configuration ==="
 
 try {
-    $loadedConfig = Get-UnattendXMLConfiguration -Path $testFile -ShowComponents -ShowElements -ElementFilter "*OOBE*" -Verbose
+    $loadedConfig = Get-UnattendXMLConfiguration -File $testFile -ShowComponents -ShowElements -ElementFilter "*OOBE*" -Verbose
     Write-Output "Loaded UnattendXML configuration:"
     Write-Output "  Source File: $($loadedConfig.SourceFilePath)"
     Write-Output "  Configuration passes: $($loadedConfig.ConfigurationPasses -join ', ')"

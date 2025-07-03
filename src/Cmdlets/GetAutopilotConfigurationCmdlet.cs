@@ -15,17 +15,11 @@ namespace PSWindowsImageTools.Cmdlets
     public class GetAutopilotConfigurationCmdlet : PSCmdlet
     {
         /// <summary>
-        /// Path to Autopilot JSON file or directory containing JSON files
+        /// Autopilot JSON file to load
         /// </summary>
         [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
-        [ValidateNotNullOrEmpty]
-        public string Path { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Include subdirectories when scanning for JSON files
-        /// </summary>
-        [Parameter]
-        public SwitchParameter Recurse { get; set; }
+        [ValidateNotNull]
+        public FileInfo File { get; set; } = null!;
 
         /// <summary>
         /// Validate the configuration after loading
@@ -41,52 +35,27 @@ namespace PSWindowsImageTools.Cmdlets
             {
                 LoggingService.WriteVerbose(this, "General", "Starting Autopilot configuration loading");
 
-                // Resolve the path
-                var resolvedPaths = GetResolvedProviderPathFromPSPath(Path, out var provider);
-                if (provider.Name != "FileSystem")
+                if (!File.Exists)
                 {
                     WriteError(new ErrorRecord(
-                        new ArgumentException("Path must be a file system path"),
-                        "InvalidPath",
-                        ErrorCategory.InvalidArgument,
-                        Path));
+                        new FileNotFoundException($"File not found: {File.FullName}"),
+                        "FileNotFound",
+                        ErrorCategory.ObjectNotFound,
+                        File));
                     return;
                 }
 
-                foreach (var resolvedPath in resolvedPaths)
-                {
-                    ProcessPath(resolvedPath);
-                }
+                ProcessFile(File.FullName);
 
                 LoggingService.WriteVerbose(this, "General", "Autopilot configuration loading completed");
             }
             catch (Exception ex)
             {
-                WriteError(new ErrorRecord(ex, "AutopilotConfigurationError", ErrorCategory.NotSpecified, Path));
+                WriteError(new ErrorRecord(ex, "AutopilotConfigurationError", ErrorCategory.NotSpecified, File));
             }
         }
 
-        private void ProcessPath(string path)
-        {
-            if (File.Exists(path))
-            {
-                // Single file
-                ProcessFile(path);
-            }
-            else if (Directory.Exists(path))
-            {
-                // Directory
-                ProcessDirectory(path);
-            }
-            else
-            {
-                WriteError(new ErrorRecord(
-                    new FileNotFoundException($"Path not found: {path}"),
-                    "PathNotFound",
-                    ErrorCategory.ObjectNotFound,
-                    path));
-            }
-        }
+
 
         private void ProcessFile(string filePath)
         {
@@ -117,27 +86,7 @@ namespace PSWindowsImageTools.Cmdlets
             }
         }
 
-        private void ProcessDirectory(string directoryPath)
-        {
-            try
-            {
-                LoggingService.WriteVerbose(this, "General", $"Scanning directory for Autopilot configurations: {directoryPath}");
 
-                var searchOption = Recurse.IsPresent ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-                var jsonFiles = Directory.GetFiles(directoryPath, "*.json", searchOption);
-
-                LoggingService.WriteVerbose(this, "General", $"Found {jsonFiles.Length} JSON files to process");
-
-                foreach (var file in jsonFiles)
-                {
-                    ProcessFile(file);
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteError(new ErrorRecord(ex, "DirectoryProcessingError", ErrorCategory.NotSpecified, directoryPath));
-            }
-        }
 
         protected override void EndProcessing()
         {

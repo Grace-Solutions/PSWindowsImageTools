@@ -21,11 +21,11 @@ namespace PSWindowsImageTools.Cmdlets
         public AutopilotConfiguration Configuration { get; set; } = new AutopilotConfiguration();
 
         /// <summary>
-        /// Output file path for the JSON file
+        /// Output file for the JSON file
         /// </summary>
         [Parameter(Mandatory = true, Position = 1)]
-        [ValidateNotNullOrEmpty]
-        public string Path { get; set; } = string.Empty;
+        [ValidateNotNull]
+        public FileInfo OutputFile { get; set; } = null!;
 
         /// <summary>
         /// Overwrite existing file
@@ -45,19 +45,16 @@ namespace PSWindowsImageTools.Cmdlets
         {
             try
             {
-                LoggingService.WriteVerbose(this, "General", $"Exporting Autopilot configuration to {Path}");
-
-                // Resolve the output path
-                var resolvedPath = GetUnresolvedProviderPathFromPSPath(Path);
+                LoggingService.WriteVerbose(this, "General", $"Exporting Autopilot configuration to {OutputFile.FullName}");
 
                 // Check if file exists and Force is not specified
-                if (File.Exists(resolvedPath) && !Force.IsPresent)
+                if (OutputFile.Exists && !Force.IsPresent)
                 {
                     WriteError(new ErrorRecord(
-                        new InvalidOperationException($"File already exists: {resolvedPath}. Use -Force to overwrite."),
+                        new InvalidOperationException($"File already exists: {OutputFile.FullName}. Use -Force to overwrite."),
                         "FileExists",
                         ErrorCategory.ResourceExists,
-                        resolvedPath));
+                        OutputFile));
                     return;
                 }
 
@@ -68,14 +65,22 @@ namespace PSWindowsImageTools.Cmdlets
                     WriteWarning($"Configuration has validation errors: {string.Join(", ", validationErrors)}");
                 }
 
-                // Export the configuration
-                _autopilotService.SaveConfiguration(Configuration, resolvedPath, this);
+                // Create directory if it doesn't exist
+                if (OutputFile.Directory != null && !OutputFile.Directory.Exists)
+                {
+                    OutputFile.Directory.Create();
+                    LoggingService.WriteVerbose(this, "General", $"Created directory: {OutputFile.Directory.FullName}");
+                }
 
-                LoggingService.WriteVerbose(this, "General", $"Successfully exported Autopilot configuration to {resolvedPath}");
+                // Export the configuration
+                _autopilotService.SaveConfiguration(Configuration, OutputFile.FullName, this);
+
+                LoggingService.WriteVerbose(this, "General", $"Successfully exported Autopilot configuration to {OutputFile.FullName}");
 
                 if (PassThru.IsPresent)
                 {
-                    WriteObject(new FileInfo(resolvedPath));
+                    OutputFile.Refresh(); // Refresh to get updated file info
+                    WriteObject(OutputFile);
                 }
             }
             catch (Exception ex)

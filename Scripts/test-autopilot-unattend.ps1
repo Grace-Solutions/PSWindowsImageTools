@@ -61,7 +61,7 @@ Write-Output "`n=== Test 3: Exporting Autopilot Configuration ==="
 try {
     # Test Export-AutopilotConfiguration
     $autopilotFile = Join-Path $autopilotDir "autopilot-config.json"
-    $exportedFile = $modifiedConfig | Export-AutopilotConfiguration -Path $autopilotFile -PassThru -Verbose
+    $exportedFile = $modifiedConfig | Export-AutopilotConfiguration -OutputFile $autopilotFile -PassThru -Verbose
     Write-Output "Exported Autopilot configuration to: $($exportedFile.FullName)"
     Write-Output "File size: $($exportedFile.Length) bytes"
     
@@ -79,7 +79,7 @@ Write-Output "`n=== Test 4: Loading Autopilot Configuration ==="
 
 try {
     # Test Get-AutopilotConfiguration
-    $loadedConfig = Get-AutopilotConfiguration -Path $autopilotFile -Validate -Verbose
+    $loadedConfig = Get-AutopilotConfiguration -File $autopilotFile -Validate -Verbose
     Write-Output "Loaded Autopilot configuration:"
     Write-Output "  Source File: $($loadedConfig.SourceFilePath)"
     Write-Output "  Tenant Domain: $($loadedConfig.CloudAssignedTenantDomain)"
@@ -130,7 +130,7 @@ Write-Output "`n=== Test 7: Exporting UnattendXML Configuration ==="
 try {
     # Test Export-UnattendXMLConfiguration
     $unattendFile = Join-Path $unattendDir "unattend.xml"
-    $exportedUnattend = $modifiedUnattend | Export-UnattendXMLConfiguration -Path $unattendFile -Encoding UTF8 -PassThru -Verbose
+    $exportedUnattend = $modifiedUnattend | Export-UnattendXMLConfiguration -OutputFile $unattendFile -Encoding UTF8 -PassThru -Verbose
     Write-Output "Exported UnattendXML configuration to: $($exportedUnattend.FullName)"
     Write-Output "File size: $($exportedUnattend.Length) bytes"
 
@@ -147,7 +147,7 @@ Write-Output "`n=== Test 8: Loading UnattendXML Configuration ==="
 
 try {
     # Test Get-UnattendXMLConfiguration
-    $loadedUnattend = Get-UnattendXMLConfiguration -Path $unattendFile -Validate -ShowComponents -Verbose
+    $loadedUnattend = Get-UnattendXMLConfiguration -File $unattendFile -Validate -ShowComponents -Verbose
     Write-Output "Loaded UnattendXML configuration:"
     Write-Output "  Source File: $($loadedUnattend.SourceFilePath)"
     Write-Output "  Configuration passes: $($loadedUnattend.ConfigurationPasses -join ', ')"
@@ -175,7 +175,7 @@ try {
     Write-Output "Note: This test requires mounted Windows images which are not available in this test environment."
     Write-Output "The Install-AutopilotConfiguration cmdlet would be used like this:"
     Write-Output "`$mountedImages = Mount-WindowsImageList -ImagePath 'install.wim'"
-    Write-Output "`$autopilotConfig = Get-AutopilotConfiguration -Path '$autopilotFile'"
+    Write-Output "`$autopilotConfig = Get-AutopilotConfiguration -File '$autopilotFile'"
     Write-Output "`$results = Install-AutopilotConfiguration -MountedImages `$mountedImages -Configuration `$autopilotConfig -WhatIf"
 } catch {
     Write-Error "Failed WhatIf test: $_"
@@ -187,7 +187,7 @@ try {
     Write-Output "Note: This test requires mounted Windows images which are not available in this test environment."
     Write-Output "The Install-UnattendXMLConfiguration cmdlet would be used like this:"
     Write-Output "`$mountedImages = Mount-WindowsImageList -ImagePath 'install.wim'"
-    Write-Output "`$unattendConfig = Get-UnattendXMLConfiguration -Path '$unattendFile'"
+    Write-Output "`$unattendConfig = Get-UnattendXMLConfiguration -File '$unattendFile'"
     Write-Output "`$results = Install-UnattendXMLConfiguration -MountedImages `$mountedImages -Configuration `$unattendConfig -WhatIf"
 } catch {
     Write-Error "Failed WhatIf test: $_"

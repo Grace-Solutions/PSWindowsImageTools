@@ -15,17 +15,11 @@ namespace PSWindowsImageTools.Cmdlets
     public class GetUnattendXMLConfigurationCmdlet : PSCmdlet
     {
         /// <summary>
-        /// Path to Unattend XML file or directory containing XML files
+        /// Unattend XML file to load
         /// </summary>
         [Parameter(Mandatory = true, Position = 0, ValueFromPipeline = true, ValueFromPipelineByPropertyName = true)]
-        [ValidateNotNullOrEmpty]
-        public string Path { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Include subdirectories when scanning for XML files
-        /// </summary>
-        [Parameter]
-        public SwitchParameter Recurse { get; set; }
+        [ValidateNotNull]
+        public FileInfo File { get; set; } = null!;
 
         /// <summary>
         /// Validate the configuration after loading
@@ -59,52 +53,27 @@ namespace PSWindowsImageTools.Cmdlets
             {
                 LoggingService.WriteVerbose(this, "General", "Starting Unattend XML configuration loading");
 
-                // Resolve the path
-                var resolvedPaths = GetResolvedProviderPathFromPSPath(Path, out var provider);
-                if (provider.Name != "FileSystem")
+                if (!File.Exists)
                 {
                     WriteError(new ErrorRecord(
-                        new ArgumentException("Path must be a file system path"),
-                        "InvalidPath",
-                        ErrorCategory.InvalidArgument,
-                        Path));
+                        new FileNotFoundException($"File not found: {File.FullName}"),
+                        "FileNotFound",
+                        ErrorCategory.ObjectNotFound,
+                        File));
                     return;
                 }
 
-                foreach (var resolvedPath in resolvedPaths)
-                {
-                    ProcessPath(resolvedPath);
-                }
+                ProcessFile(File.FullName);
 
                 LoggingService.WriteVerbose(this, "General", "Unattend XML configuration loading completed");
             }
             catch (Exception ex)
             {
-                WriteError(new ErrorRecord(ex, "UnattendXMLConfigurationError", ErrorCategory.NotSpecified, Path));
+                WriteError(new ErrorRecord(ex, "UnattendXMLConfigurationError", ErrorCategory.NotSpecified, File));
             }
         }
 
-        private void ProcessPath(string path)
-        {
-            if (File.Exists(path))
-            {
-                // Single file
-                ProcessFile(path);
-            }
-            else if (Directory.Exists(path))
-            {
-                // Directory
-                ProcessDirectory(path);
-            }
-            else
-            {
-                WriteError(new ErrorRecord(
-                    new FileNotFoundException($"Path not found: {path}"),
-                    "PathNotFound",
-                    ErrorCategory.ObjectNotFound,
-                    path));
-            }
-        }
+
 
         private void ProcessFile(string filePath)
         {
@@ -166,27 +135,7 @@ namespace PSWindowsImageTools.Cmdlets
             }
         }
 
-        private void ProcessDirectory(string directoryPath)
-        {
-            try
-            {
-                LoggingService.WriteVerbose(this, "General", $"Scanning directory for Unattend XML configurations: {directoryPath}");
 
-                var searchOption = Recurse.IsPresent ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-                var xmlFiles = Directory.GetFiles(directoryPath, "*.xml", searchOption);
-
-                LoggingService.WriteVerbose(this, "General", $"Found {xmlFiles.Length} XML files to process");
-
-                foreach (var file in xmlFiles)
-                {
-                    ProcessFile(file);
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteError(new ErrorRecord(ex, "DirectoryProcessingError", ErrorCategory.NotSpecified, directoryPath));
-            }
-        }
 
         protected override void EndProcessing()
         {

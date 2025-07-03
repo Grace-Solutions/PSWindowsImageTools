@@ -22,11 +22,11 @@ namespace PSWindowsImageTools.Cmdlets
         public UnattendXMLConfiguration Configuration { get; set; } = new UnattendXMLConfiguration();
 
         /// <summary>
-        /// Output file path for the XML file
+        /// Output file for the XML file
         /// </summary>
         [Parameter(Mandatory = true, Position = 1)]
-        [ValidateNotNullOrEmpty]
-        public string Path { get; set; } = string.Empty;
+        [ValidateNotNull]
+        public FileInfo OutputFile { get; set; } = null!;
 
         /// <summary>
         /// Text encoding for the XML file
@@ -69,19 +69,16 @@ namespace PSWindowsImageTools.Cmdlets
         {
             try
             {
-                LoggingService.WriteVerbose(this, "General", $"Exporting Unattend XML configuration to {Path}");
-
-                // Resolve the output path
-                var resolvedPath = GetUnresolvedProviderPathFromPSPath(Path);
+                LoggingService.WriteVerbose(this, "General", $"Exporting Unattend XML configuration to {OutputFile.FullName}");
 
                 // Check if file exists and Force is not specified
-                if (File.Exists(resolvedPath) && !Force.IsPresent)
+                if (OutputFile.Exists && !Force.IsPresent)
                 {
                     WriteError(new ErrorRecord(
-                        new InvalidOperationException($"File already exists: {resolvedPath}. Use -Force to overwrite."),
+                        new InvalidOperationException($"File already exists: {OutputFile.FullName}. Use -Force to overwrite."),
                         "FileExists",
                         ErrorCategory.ResourceExists,
-                        resolvedPath));
+                        OutputFile));
                     return;
                 }
 
@@ -97,21 +94,21 @@ namespace PSWindowsImageTools.Cmdlets
                 LoggingService.WriteVerbose(this, "General", $"Using encoding: {encoding.EncodingName}");
 
                 // Create directory if it doesn't exist
-                var directory = System.IO.Path.GetDirectoryName(resolvedPath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                if (OutputFile.Directory != null && !OutputFile.Directory.Exists)
                 {
-                    Directory.CreateDirectory(directory);
-                    LoggingService.WriteVerbose(this, "General", $"Created directory: {directory}");
+                    OutputFile.Directory.Create();
+                    LoggingService.WriteVerbose(this, "General", $"Created directory: {OutputFile.Directory.FullName}");
                 }
 
                 // Save the configuration using the built-in method
-                Configuration.SaveToFile(resolvedPath, encoding);
+                Configuration.SaveToFile(OutputFile.FullName, encoding);
 
-                LoggingService.WriteVerbose(this, "General", $"Successfully exported Unattend XML configuration to {resolvedPath}");
+                LoggingService.WriteVerbose(this, "General", $"Successfully exported Unattend XML configuration to {OutputFile.FullName}");
 
                 if (PassThru.IsPresent)
                 {
-                    WriteObject(new FileInfo(resolvedPath));
+                    OutputFile.Refresh(); // Refresh to get updated file info
+                    WriteObject(OutputFile);
                 }
             }
             catch (Exception ex)
