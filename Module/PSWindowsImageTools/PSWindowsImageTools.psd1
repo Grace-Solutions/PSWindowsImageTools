@@ -75,6 +75,13 @@
         'Get-INFDriverList',
         'Add-INFDriverList',
 
+        # ADK and Optional Component Management
+        'Get-ADKInstallation',
+        'Get-WinPEOptionalComponent',
+        'Add-WinPEOptionalComponent',
+        'Install-ADK',
+        'Uninstall-ADK',
+
         # AppX Package Management
         'Remove-AppXProvisionedPackageList',
 

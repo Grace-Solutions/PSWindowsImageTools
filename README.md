@@ -11,6 +11,8 @@ A comprehensive PowerShell module for Windows image customization and management
 - **🔧 Mount Management**: Automated mounting with GUID-based organization and cleanup
 - **📊 Progress Tracking**: Real-time progress with intelligent size formatting and statistics
 - **🎯 Format Conversion**: Convert ESD files to WIM format with filtering capabilities
+- **🏗️ ADK Integration**: Detect Windows ADK installations and manage WinPE Optional Components
+- **⚙️ Component Management**: Install WinPE Optional Components into boot images with validation
 
 ## Quick Start
 

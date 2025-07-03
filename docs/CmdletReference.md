@@ -323,4 +323,155 @@ $buildsWithUpdate = Search-WindowsImageDatabase -UpdateId "ea1c079c-952f-41cb-9a
 Clear-WindowsImageDatabase -Force
 ```
 
+## ADK and Optional Component Management
+
+### Get-ADKInstallation
+Detect installed Windows Assessment and Deployment Kit (ADK) installations.
+
+```powershell
+Get-ADKInstallation [-Latest] [-MinimumVersion <Version>] [-RequireWinPE] [-RequireDeploymentTools] [-RequiredArchitecture <String>]
+```
+
+**Parameters:**
+- `Latest`: Return only the latest version if multiple installations found
+- `MinimumVersion`: Minimum required ADK version
+- `RequireWinPE`: Require WinPE add-on to be installed
+- `RequireDeploymentTools`: Require Deployment Tools to be installed
+- `RequiredArchitecture`: Specific architecture support required (x86, amd64, arm64)
+
+### Get-WinPEOptionalComponent
+Get available WinPE Optional Components from ADK installation.
+
+```powershell
+Get-WinPEOptionalComponent [-ADKInstallation <ADKInfo>] [-Architecture <String>] [-IncludeLanguagePacks] [-Category <String[]>] [-Name <String[]>]
+```
+
+**Parameters:**
+- `ADKInstallation`: ADK installation to scan (auto-detected if not specified)
+- `Architecture`: Target architecture (x86, amd64, arm64) - default: amd64
+- `IncludeLanguagePacks`: Include language pack components
+- `Category`: Filter by category (Networking, Storage, Scripting, etc.)
+- `Name`: Filter by name pattern (supports wildcards)
+
+### Add-WinPEOptionalComponent
+Install WinPE Optional Components into mounted boot images.
+
+```powershell
+Add-WinPEOptionalComponent -MountedImages <MountedWindowsImage[]> -Components <WinPEOptionalComponent[]> [-ContinueOnError]
+```
+
+**Parameters:**
+- `MountedImages`: Mounted boot images from Mount-WindowsImageList
+- `Components`: Optional components from Get-WinPEOptionalComponent
+- `ContinueOnError`: Continue if individual components fail
+
+### Install-ADK
+Download and install the latest Windows ADK silently with automatic patch detection.
+
+```powershell
+Install-ADK [-InstallPath <String>] [-IncludeWinPE] [-IncludeDeploymentTools] [-Force]
+```
+
+**Parameters:**
+- `InstallPath`: Custom installation path for ADK
+- `IncludeWinPE`: Include WinPE add-on in the installation (default: true)
+- `IncludeDeploymentTools`: Include Deployment Tools in the installation (default: true)
+- `Force`: Force installation even if ADK is already installed (default: skip if present)
+
+**Features:**
+- Automatically parses Microsoft's ADK download page for latest version
+- Downloads and installs both ADK and WinPE add-on
+- Detects and applies available patches (ZIP files with MSP files)
+- Enhanced process monitoring with command line display and timeouts
+
+### Uninstall-ADK
+Uninstall Windows ADK and WinPE add-on silently.
+
+```powershell
+Uninstall-ADK [-All] [-Force]
+```
+
+**Parameters:**
+- `All`: Remove all ADK installations found on the system
+- `Force`: Force uninstallation without confirmation prompts
+
+## ADK and Optional Component Examples
+
+### ADK Installation and Management
+
+```powershell
+# Install latest ADK with WinPE and Deployment Tools
+$adk = Install-ADK -IncludeWinPE -IncludeDeploymentTools
+
+# Install to custom path
+$adk = Install-ADK -InstallPath "C:\CustomADK" -IncludeWinPE
+
+# Skip installation if already present (default behavior)
+$adk = Install-ADK
+
+# Uninstall latest ADK
+Uninstall-ADK
+
+# Uninstall all ADK installations
+Uninstall-ADK -All -Force
+```
+
+### Basic ADK Detection and Component Installation
+
+```powershell
+# 1. Detect or install ADK
+$adk = Get-ADKInstallation -Latest -RequireWinPE
+if (-not $adk) {
+    $adk = Install-ADK -IncludeWinPE -IncludeDeploymentTools
+}
+
+# 2. Get available components
+$components = Get-WinPEOptionalComponent -ADKInstallation $adk -Category Scripting
+
+# 3. Mount boot image
+$mounted = Mount-WindowsImageList -ImagePath "boot.wim" -Index 2 -MountPath "C:\Mount" -ReadWrite
+
+# 4. Install components
+$results = Add-WinPEOptionalComponent -MountedImages $mounted -Components $components
+
+# 5. Dismount and save
+Dismount-WindowsImageList -MountPath $mounted[0].MountPath -Save
+```
+
+### Advanced Component Management
+
+```powershell
+# Find PowerShell and .NET components
+$scriptingComponents = Get-ADKInstallation -Latest -RequireWinPE |
+    Get-WinPEOptionalComponent -Name "*PowerShell*","*NetFx*" -Architecture amd64
+
+# Install with comprehensive error handling
+$installResults = Add-WinPEOptionalComponent -MountedImages $mounted -Components $scriptingComponents -ContinueOnError
+
+# Review results
+foreach ($result in $installResults) {
+    Write-Host "Image: $($result.MountedImage.ImageName)"
+    Write-Host "  Success: $($result.SuccessfulComponents.Count)"
+    Write-Host "  Failed: $($result.FailedComponents.Count)"
+    Write-Host "  Success Rate: $($result.SuccessRate.ToString('F1'))%"
+}
+```
+
+### Component Discovery and Filtering
+
+```powershell
+# Get all components with size information
+$allComponents = Get-WinPEOptionalComponent -IncludeLanguagePacks |
+    Sort-Object Category, Name
+
+# Filter by category
+$networkingComponents = Get-WinPEOptionalComponent -Category Networking
+
+# Find components by pattern
+$storageComponents = Get-WinPEOptionalComponent -Name "*Storage*","*WMI*"
+
+# Show component details
+$allComponents | Format-Table Name, Category, Architecture, SizeFormatted, IsLanguagePack
+```
+
 This reference covers all major cmdlets and common usage patterns for PSWindowsImageTools.
