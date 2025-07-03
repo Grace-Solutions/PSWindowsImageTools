@@ -30,19 +30,18 @@ namespace PSWindowsImageTools.Cmdlets
         public FileInfo ImagePath { get; set; } = null!;
 
         /// <summary>
-        /// Enables advanced metadata collection by mounting images
+        /// Enables advanced metadata collection by mounting images (slower but more detailed)
         /// </summary>
         [Parameter(
-            HelpMessage = "Enables advanced metadata collection by mounting images")]
-        public SwitchParameter Advanced { get; set; }
+            HelpMessage = "Enables advanced metadata collection by mounting images (slower but more detailed)")]
+        public SwitchParameter IncludeAdvanced { get; set; }
 
         /// <summary>
-        /// Root directory for mounting operations
+        /// Calculate SHA256 hash of the source image file (slower but provides integrity verification)
         /// </summary>
         [Parameter(
-            HelpMessage = "Root directory for mounting operations")]
-        [ValidateNotNullOrEmpty]
-        public DirectoryInfo? MountRootDirectory { get; set; }
+            HelpMessage = "Calculate SHA256 hash of the source image file (slower but provides integrity verification)")]
+        public SwitchParameter IncludeHash { get; set; }
 
         /// <summary>
         /// Inclusion filter scriptblock to select which images to process (e.g., {$_.Name -like "*Pro*"} or {$_.Index -eq 1})
@@ -83,8 +82,8 @@ namespace PSWindowsImageTools.Cmdlets
                     return;
                 }
 
-                // Determine mount root directory
-                var mountRoot = MountRootDirectory?.FullName ?? ConfigurationService.DefaultMountRootDirectory;
+                // Use default mount root directory
+                var mountRoot = ConfigurationService.DefaultMountRootDirectory;
                 LoggingService.WriteVerbose(this, $"Using mount root directory: {mountRoot}");
 
                 // Validate mount root directory
@@ -187,7 +186,7 @@ namespace PSWindowsImageTools.Cmdlets
                     var wimGuid = Guid.NewGuid().ToString();
 
                     // Get advanced information if requested
-                    if (Advanced.IsPresent)
+                    if (IncludeAdvanced.IsPresent)
                     {
                         LoggingService.WriteVerbose(this, "Advanced metadata requested, mounting images...");
 
@@ -240,6 +239,20 @@ namespace PSWindowsImageTools.Cmdlets
                     {
                         // Complete progress for basic image discovery
                         LoggingService.CompleteProgress(this, "Processing Windows Images");
+                    }
+                }
+
+                // Calculate hash if requested (independent of database)
+                if (IncludeHash.IsPresent && imageInfoList.Count > 0 && !string.IsNullOrEmpty(imageInfoList[0].SourcePath))
+                {
+                    LoggingService.WriteVerbose(this, "Calculating SHA256 hash for source file...");
+                    var sourceHash = CalculateFileHash(imageInfoList[0].SourcePath);
+                    LoggingService.WriteVerbose(this, $"SHA256 hash calculation completed: {sourceHash}");
+
+                    // Set hash on all images from the same source file
+                    foreach (var imageInfo in imageInfoList)
+                    {
+                        imageInfo.SourceHash = sourceHash;
                     }
                 }
 
@@ -314,13 +327,8 @@ namespace PSWindowsImageTools.Cmdlets
                     var dataTable = dbService.CreateBuildsDataTable();
                     var insertedCount = 0;
 
-                    // Calculate hash once for the source file (deferred for performance)
-                    var sourceHash = "";
-                    if (imageInfoList.Count > 0 && !string.IsNullOrEmpty(imageInfoList[0].SourcePath))
-                    {
-                        sourceHash = CalculateFileHash(imageInfoList[0].SourcePath);
-                        LoggingService.WriteVerbose(this, "DatabaseService", $"Calculated SHA256 hash for database storage");
-                    }
+                    // Use already calculated hash if available
+                    var sourceHash = imageInfoList.Count > 0 ? imageInfoList[0].SourceHash : "";
 
                     foreach (var imageInfo in imageInfoList)
                     {
