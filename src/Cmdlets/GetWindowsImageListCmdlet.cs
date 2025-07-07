@@ -58,6 +58,13 @@ namespace PSWindowsImageTools.Cmdlets
         public ScriptBlock? ExclusionFilter { get; set; }
 
         /// <summary>
+        /// Skip dismounting images after processing (keeps them mounted for use with other cmdlets)
+        /// </summary>
+        [Parameter(
+            HelpMessage = "Skip dismounting images after processing (keeps them mounted for use with other cmdlets)")]
+        public SwitchParameter SkipDismount { get; set; }
+
+        /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
@@ -206,8 +213,19 @@ namespace PSWindowsImageTools.Cmdlets
 
                                 try
                                 {
-                                    var advancedInfo = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this);
+                                    var (advancedInfo, mountedImage) = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this, SkipDismount.IsPresent);
                                     imageInfo.AdvancedInfo = advancedInfo;
+                                    imageInfo.MountedImage = mountedImage;
+
+                                    if (mountedImage != null)
+                                    {
+                                        // Update mounted image with additional info from imageInfo
+                                        mountedImage.ImageName = imageInfo.Name;
+                                        mountedImage.Edition = imageInfo.Edition;
+                                        mountedImage.Architecture = imageInfo.Architecture;
+                                        mountedImage.ImageSize = imageInfo.Size;
+                                    }
+
                                     LoggingService.WriteVerbose(this, $"[{i + 1} of {imageInfoList.Count}] - Advanced information collected for image {imageInfo.Index}: {imageInfo.Name}");
                                 }
                                 finally

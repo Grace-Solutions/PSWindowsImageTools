@@ -27,7 +27,7 @@ namespace PSWindowsImageTools.Services
             try
             {
                 using var registryPackageService = new RegistryPackageService();
-                return registryPackageService.ReadWindowsVersionOnly(mountPath, cmdlet);
+                return registryPackageService.ReadWindowsVersionInfo(mountPath, cmdlet);
             }
             catch (Exception ex)
             {
@@ -52,18 +52,20 @@ namespace PSWindowsImageTools.Services
         {
             try
             {
-                // Using Registry package for reading
+                // Using Registry package for reading with RegistryHiveOnDemand
 
                 using var registryPackageService = new RegistryPackageService();
                 return registryPackageService.ReadOfflineRegistry(mountPath, cmdlet);
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName,
-                    $"Registry package reading failed, falling back to native API: {ex.Message}");
+                LoggingService.WriteError(cmdlet, ServiceName,
+                    $"Registry package reading failed: {ex.Message}", ex);
 
-                // Fallback to native API if Registry package fails
-                return ReadOfflineRegistryWithNativeApi(mountPath, cmdlet);
+                return new Dictionary<string, object>
+                {
+                    ["RegistryReadError"] = ex.Message
+                };
             }
         }
 

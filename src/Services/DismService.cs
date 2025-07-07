@@ -95,15 +95,16 @@ namespace PSWindowsImageTools.Services
         /// <param name="imageIndex">Index of the image to mount</param>
         /// <param name="mountPath">Path where to mount the image</param>
         /// <param name="cmdlet">Cmdlet for logging</param>
-        /// <returns>Advanced image information</returns>
-        public WindowsImageAdvancedInfo GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet)
+        /// <param name="skipDismount">If true, keeps the image mounted and returns mount info</param>
+        /// <returns>Tuple containing advanced image information and optional mounted image info</returns>
+        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false)
         {
             try
             {
                 using var advancedInfoService = new AdvancedImageInfoService();
-                var advancedInfo = advancedInfoService.GetAdvancedImageInfo(imagePath, imageIndex, mountPath, cmdlet);
+                var result = advancedInfoService.GetAdvancedImageInfo(imagePath, imageIndex, mountPath, cmdlet, skipDismount);
 
-                return advancedInfo;
+                return result;
             }
             catch (Exception ex)
             {

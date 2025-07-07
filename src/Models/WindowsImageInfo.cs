@@ -63,7 +63,7 @@ namespace PSWindowsImageTools.Models
             get
             {
                 // If we have advanced registry info with UBR, combine it with the DISM version
-                if (AdvancedInfo?.RegistryInfo?.TryGetValue("UBR", out var ubrValue) == true &&
+                if (AdvancedInfo?.RegistryInfo?.TryGetValue("VersionInfo.UBR", out var ubrValue) == true &&
                     Version != null &&
                     ubrValue != null)
                 {
@@ -139,6 +139,11 @@ namespace PSWindowsImageTools.Models
         /// Advanced metadata (populated when Advanced flag is used)
         /// </summary>
         public WindowsImageAdvancedInfo? AdvancedInfo { get; set; }
+
+        /// <summary>
+        /// Mounted image information (populated when SkipDismount is used)
+        /// </summary>
+        public MountedWindowsImage? MountedImage { get; set; }
 
         /// <summary>
         /// Timestamp when this record was created (UTC)

@@ -30,54 +30,80 @@ namespace PSWindowsImageTools.Services
         }
 
         /// <summary>
-        /// Gets essential Windows version registry information from an image by mounting it
-        /// Only reads the Windows CurrentVersion registry key for version information
+        /// Gets advanced registry information from an image by mounting it
+        /// Reads Windows version info, installed software, and Windows Update configuration
         /// </summary>
         /// <param name="imagePath">Path to the image file</param>
         /// <param name="imageIndex">Index of the image to mount</param>
         /// <param name="mountPath">Path where to mount the image</param>
         /// <param name="cmdlet">Cmdlet for logging</param>
-        /// <returns>Advanced image information</returns>
-        public WindowsImageAdvancedInfo GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet)
+        /// <param name="skipDismount">If true, keeps the image mounted and returns mount info</param>
+        /// <returns>Tuple containing advanced image information and optional mounted image info</returns>
+        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false)
         {
             Initialize();
             var advancedInfo = new WindowsImageAdvancedInfo();
+            MountedWindowsImage? mountedImage = null;
 
             try
             {
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    $"Getting Windows version info for image {imageIndex}");
+                    $"Getting advanced registry info for image {imageIndex}");
 
                 // Mount the image
                 DismApi.MountImage(imagePath, mountPath, imageIndex);
 
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Image {imageIndex} successfully mounted to {mountPath}");
+
+                // Create mounted image info if we're keeping it mounted
+                if (skipDismount)
+                {
+                    mountedImage = new MountedWindowsImage
+                    {
+                        MountId = Guid.NewGuid().ToString(),
+                        SourceImagePath = imagePath,
+                        ImageIndex = imageIndex,
+                        MountPath = new DirectoryInfo(mountPath),
+                        Status = MountStatus.Mounted,
+                        IsReadOnly = true,
+                        MountedAt = DateTime.UtcNow
+                    };
+
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Image will remain mounted for use with other cmdlets (MountId: {mountedImage.MountId})");
+                }
+
                 try
                 {
-                    // Only read essential Windows version registry information
+                    // Read complete registry information using RegistryPackageService
                     using var registryService = new OfflineRegistryService();
-                    advancedInfo.RegistryInfo = registryService.ReadWindowsVersionInfo(mountPath, cmdlet);
+                    advancedInfo.RegistryInfo = registryService.ReadOfflineRegistryInfo(mountPath, cmdlet);
                 }
                 finally
                 {
-                    // Always unmount the image
-                    try
+                    // Only unmount if not skipping dismount
+                    if (!skipDismount)
                     {
-                        DismApi.UnmountImage(mountPath, false); // Discard changes
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to unmount image: {ex.Message}");
+                        try
+                        {
+                            DismApi.UnmountImage(mountPath, false); // Discard changes
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to unmount image: {ex.Message}");
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 LoggingService.WriteError(cmdlet, ServiceName,
-                    $"Failed to get Windows version information: {ex.Message}", ex);
+                    $"Failed to get advanced registry information: {ex.Message}", ex);
                 throw;
             }
 
-            return advancedInfo;
+            return (advancedInfo, mountedImage);
         }
 
 
