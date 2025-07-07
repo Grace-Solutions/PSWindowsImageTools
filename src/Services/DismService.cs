@@ -19,7 +19,7 @@ namespace PSWindowsImageTools.Services
         private bool _disposed = false;
 
         /// <summary>
-        /// Initializes the DISM API
+        /// Initializes the Microsoft.Dism API for basic operations
         /// </summary>
         public void Initialize()
         {
@@ -55,7 +55,7 @@ namespace PSWindowsImageTools.Services
                         Name = dismImageInfo.ImageName ?? string.Empty,
                         Description = dismImageInfo.ImageDescription ?? string.Empty,
                         Size = (long)dismImageInfo.ImageSize,
-                        Architecture = dismImageInfo.Architecture.ToString(),
+                        Architecture = ConvertArchitectureToDisplayString(dismImageInfo.Architecture.ToString()),
                         ProductType = dismImageInfo.ProductType ?? string.Empty,
                         InstallationType = dismImageInfo.InstallationType ?? string.Empty,
                         Edition = dismImageInfo.EditionId ?? string.Empty,
@@ -89,7 +89,8 @@ namespace PSWindowsImageTools.Services
         }
 
         /// <summary>
-        /// Gets advanced information about an image by mounting it
+        /// Gets advanced information about an image by mounting it and reading registry data
+        /// Handles the mounting/unmounting and delegates registry reading to AdvancedImageInfoService
         /// </summary>
         /// <param name="imagePath">Path to the image file</param>
         /// <param name="imageIndex">Index of the image to mount</param>
@@ -100,12 +101,84 @@ namespace PSWindowsImageTools.Services
         /// <returns>Tuple containing advanced image information and optional mounted image info</returns>
         public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false, Action<int, string>? progressCallback = null)
         {
+            var advancedInfo = new WindowsImageAdvancedInfo();
+            MountedWindowsImage? mountedImage = null;
+
             try
             {
-                using var advancedInfoService = new AdvancedImageInfoService();
-                var result = advancedInfoService.GetAdvancedImageInfo(imagePath, imageIndex, mountPath, cmdlet, skipDismount, progressCallback);
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Mounting image {imageIndex} for advanced information collection");
 
-                return result;
+                // Mount the image using native DISM API with progress callbacks
+                using var nativeDismService = new NativeDismService();
+                var mountSuccess = nativeDismService.MountImage(
+                    imagePath,
+                    mountPath,
+                    (uint)imageIndex,
+                    readOnly: true,
+                    progressCallback: progressCallback,
+                    cmdlet: cmdlet);
+
+                if (!mountSuccess)
+                {
+                    throw new InvalidOperationException($"Failed to mount image {imageIndex} from {imagePath}");
+                }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Image {imageIndex} successfully mounted to {mountPath}");
+
+                // Create mounted image info if we're keeping it mounted
+                if (skipDismount)
+                {
+                    mountedImage = new MountedWindowsImage
+                    {
+                        MountId = Guid.NewGuid().ToString(),
+                        SourceImagePath = imagePath,
+                        ImageIndex = imageIndex,
+                        MountPath = new DirectoryInfo(mountPath),
+                        Status = MountStatus.Mounted,
+                        IsReadOnly = true,
+                        MountedAt = DateTime.UtcNow
+                    };
+
+                    LoggingService.WriteVerbose(cmdlet, ServiceName,
+                        $"Image will remain mounted for use with other cmdlets (MountId: {mountedImage.MountId})");
+                }
+
+                try
+                {
+                    // Use AdvancedImageInfoService to read registry information from the mounted image
+                    using var advancedInfoService = new AdvancedImageInfoService();
+                    advancedInfo = advancedInfoService.GetAdvancedImageInfo(mountPath, cmdlet);
+                }
+                finally
+                {
+                    // Only unmount if not skipping dismount
+                    if (!skipDismount)
+                    {
+                        // Force garbage collection to ensure all registry handles are released
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+
+                        // Small delay to ensure file handles are fully released
+                        System.Threading.Thread.Sleep(100);
+
+                        try
+                        {
+                            var unmountSuccess = nativeDismService.UnmountImage(mountPath, false, cmdlet: cmdlet);
+                            if (!unmountSuccess)
+                            {
+                                LoggingService.WriteWarning(cmdlet, ServiceName, "Failed to unmount image using native API");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to unmount image: {ex.Message}");
+                        }
+                    }
+                }
+
+                return (advancedInfo, mountedImage);
             }
             catch (Exception ex)
             {
@@ -178,7 +251,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>True if package was added successfully</returns>
         public bool AddPackage(string mountPath, string packagePath, PSCmdlet cmdlet, Action<int, string>? progressCallback = null)
         {
-            Initialize();
 
             try
             {
@@ -214,7 +286,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>True if package was removed successfully</returns>
         public bool RemovePackage(string mountPath, string packageName, PSCmdlet cmdlet, Action<int, string>? progressCallback = null)
         {
-            Initialize();
 
             try
             {
@@ -244,7 +315,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>List of package information</returns>
         public List<DismPackage> GetPackages(string mountPath, PSCmdlet cmdlet)
         {
-            Initialize();
 
             try
             {
@@ -279,7 +349,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>True if feature was enabled successfully</returns>
         public bool EnableFeature(string mountPath, string featureName, bool enableAll, string? sourcePath, PSCmdlet cmdlet, Action<int, string>? progressCallback = null)
         {
-            Initialize();
 
             try
             {
@@ -315,7 +384,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>True if feature was disabled successfully</returns>
         public bool DisableFeature(string mountPath, string featureName, bool removePayload, PSCmdlet cmdlet, Action<int, string>? progressCallback = null)
         {
-            Initialize();
 
             try
             {
@@ -350,7 +418,6 @@ namespace PSWindowsImageTools.Services
         /// <returns>List of feature information</returns>
         public List<DismFeature> GetFeatures(string mountPath, PSCmdlet cmdlet)
         {
-            Initialize();
 
             try
             {
@@ -420,25 +487,32 @@ namespace PSWindowsImageTools.Services
         // Registry reading functionality moved to dedicated OfflineRegistryService
 
         /// <summary>
+        /// Converts Microsoft.Dism architecture strings to preferred display format
+        /// </summary>
+        /// <param name="dismArchitecture">Architecture string from Microsoft.Dism</param>
+        /// <returns>Standardized architecture display string</returns>
+        private static string ConvertArchitectureToDisplayString(string dismArchitecture)
+        {
+            return dismArchitecture?.ToUpperInvariant() switch
+            {
+                "AMD64" => "x64",
+                "X86" => "x86",
+                "ARM" => "ARM",
+                "ARM64" => "ARM64",
+                "IA64" => "IA64",
+                _ => dismArchitecture ?? "Unknown"
+            };
+        }
+
+        /// <summary>
         /// Disposes the DISM service
         /// </summary>
         public void Dispose()
         {
             if (!_disposed)
             {
-                if (_dismInitialized)
-                {
-                    try
-                    {
-                        DismApi.Shutdown();
-                    }
-                    catch
-                    {
-                        // Ignore shutdown errors
-                    }
-                    _dismInitialized = false;
-                }
                 _disposed = true;
+                GC.SuppressFinalize(this);
             }
         }
     }

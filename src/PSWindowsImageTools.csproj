@@ -86,7 +86,7 @@
       <PowerShellAssembliesToDelete Include="$(OutputPath)Microsoft.PowerShell.*.dll" />
 
       <!-- Remove .NET runtime assemblies (keep only essential Registry and Text dependencies) -->
-      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Text.Json.dll;$(OutputPath)System.Text.Encoding.CodePages.dll" />
+      <SystemAssembliesToDelete Include="$(OutputPath)System.*.dll" Exclude="$(OutputPath)System.Text.Json.dll;$(OutputPath)System.Text.Encoding.CodePages.dll;$(OutputPath)System.Runtime.CompilerServices.Unsafe.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.Win32.*.dll" Exclude="$(OutputPath)Microsoft.Win32.Registry.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.CSharp.dll" />
       <SystemAssembliesToDelete Include="$(OutputPath)Microsoft.VisualBasic.*.dll" />

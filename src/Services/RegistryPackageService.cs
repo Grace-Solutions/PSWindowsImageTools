@@ -53,12 +53,17 @@ namespace PSWindowsImageTools.Services
                     }
                 }
 
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Successfully read {versionInfo.Count} version properties");
+
+                // Force cleanup of registry hive to release file handles
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName, 
+                LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Failed to read Windows version info: {ex.Message}");
             }
 
@@ -145,12 +150,17 @@ namespace PSWindowsImageTools.Services
 
                 softwareInfo["Software"] = softwareList.ToArray();
 
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Found {softwareList.Count} installed software entries");
+
+                // Force cleanup of registry hive to release file handles
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
             catch (Exception ex)
             {
-                LoggingService.WriteWarning(cmdlet, ServiceName, 
+                LoggingService.WriteWarning(cmdlet, ServiceName,
                     $"Failed to read installed software: {ex.Message}");
             }
 
@@ -240,12 +250,17 @@ namespace PSWindowsImageTools.Services
                     }
                 }
 
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Read {wuConfigInfo.Count} Windows Update configuration properties");
+
+                // Force cleanup of registry hive to release file handles
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
             catch (Exception ex)
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName, 
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Error reading Windows Update config: {ex.Message}");
             }
 

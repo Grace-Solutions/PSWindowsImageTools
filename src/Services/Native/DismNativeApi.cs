@@ -16,11 +16,23 @@ namespace PSWindowsImageTools.Services.Native
 
         #region Enums and Structures
 
-        public enum LogLevel : uint
+        public enum LogLevel
         {
             LogErrors = 0,
-            LogErrorsWarnings = 1,
-            LogErrorsWarningsInfo = 2
+            LogWarnings = 1,
+            LogInfo = 2
+        }
+
+        public enum ProgressOperation
+        {
+            DismProgressNone,
+            DismProgressImageApply,
+            DismProgressImageCapture,
+            DismProgressImageUnmount,
+            DismProgressImageMount,
+            DismProgressImageDelete,
+            DismProgressImageCommit,
+            DismProgressImageExport
         }
 
         public enum ImageIdentifier : uint
@@ -69,7 +81,26 @@ namespace PSWindowsImageTools.Services.Native
             Unspecified = 9
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public enum Architecture : uint
+        {
+            X86 = 0,
+            MIPS = 1,
+            Alpha = 2,
+            PowerPC = 3,
+            SHX = 4,
+            ARM = 5,
+            IA64 = 6,
+            Alpha64 = 7,
+            MSIL = 8,
+            X64 = 9,
+            IA32_ON_WIN64 = 10,
+            Neutral = 11,
+            ARM64 = 12,
+            ARM32_ON_WIN64 = 13,
+            IA32_ON_ARM64 = 14
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 8)]
         public struct DismImageInfo
         {
             public uint ImageType;
@@ -77,7 +108,7 @@ namespace PSWindowsImageTools.Services.Native
             public IntPtr ImageName;
             public IntPtr ImageDescription;
             public ulong ImageSize;
-            public uint Architecture;
+            public Architecture Architecture;
             public IntPtr ProductName;
             public IntPtr EditionId;
             public IntPtr InstallationType;
@@ -139,19 +170,36 @@ namespace PSWindowsImageTools.Services.Native
 
         #endregion
 
-        // Progress callback delegate - matches Microsoft's implementation
-        public delegate void ProgressCallback(uint current, uint total, IntPtr userData);
+        #region DISM Constants
+
+        /// <summary>
+        /// DISM unmount flags
+        /// </summary>
+        public static class UnmountFlags
+        {
+            public const uint DISM_DISCARD_IMAGE = 0x00000000;
+            public const uint DISM_COMMIT_IMAGE = 0x00000001;
+            public const uint DISM_COMMIT_MASK = 0x00000001;
+        }
+
+        #endregion
+
+        // Progress callback delegate - matches the actual DISM API signature
+        public delegate void ProgressCallback(
+            uint current,
+            uint total,
+            IntPtr userData);
 
         #region Core DISM API Functions - Based on Microsoft's actual implementation
 
-        [DllImport(DismApiDll)]
-        public static extern int DismInitialize(
+        [DllImport(DismApiDll, CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern void DismInitialize(
             LogLevel logLevel,
-            [MarshalAs(UnmanagedType.LPWStr)] string logFilePath,
-            [MarshalAs(UnmanagedType.LPWStr)] string scratchDirectory);
+            string? scratchDirectory,
+            string? logFilePath);
 
-        [DllImport(DismApiDll)]
-        public static extern int DismShutdown();
+        [DllImport(DismApiDll, CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern void DismShutdown();
 
         [DllImport(DismApiDll)]
         public static extern int DismOpenSession(
@@ -163,25 +211,27 @@ namespace PSWindowsImageTools.Services.Native
         [DllImport(DismApiDll)]
         public static extern int DismCloseSession(uint session);
 
-        [DllImport(DismApiDll)]
-        public static extern int DismMountImage(
-            [MarshalAs(UnmanagedType.LPWStr)] string imagePath,
-            [MarshalAs(UnmanagedType.LPWStr)] string mountPath,
+        [DllImport(DismApiDll, CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern void DismMountImage(
+            string imagePath,
+            string mountPath,
             uint imageIndex,
-            [MarshalAs(UnmanagedType.LPWStr)] string imageName,
+            string? imageName,
             ImageIdentifier imageIdentifier,
-            uint mountFlags,
-            SafeWaitHandle? cancelHandle,
-            ProgressCallback progress,
+            uint flags,
+            IntPtr cancelEvent,
+            ProgressCallback? progress,
             IntPtr userData);
 
-        [DllImport(DismApiDll)]
-        public static extern int DismUnmountImage(
-            [MarshalAs(UnmanagedType.LPWStr)] string mountPath,
-            uint unmountFlags,
-            SafeWaitHandle? cancelHandle,
-            ProgressCallback progress,
+        [DllImport(DismApiDll, CharSet = CharSet.Unicode, PreserveSig = false)]
+        public static extern void DismUnmountImage(
+            string mountPath,
+            uint flags,
+            IntPtr cancelEvent,
+            ProgressCallback? progress,
             IntPtr userData);
+
+
 
         [DllImport(DismApiDll)]
         public static extern int DismGetImageInfo(
@@ -289,5 +339,53 @@ namespace PSWindowsImageTools.Services.Native
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Extension methods for Architecture enum
+    /// </summary>
+    public static class ArchitectureExtensions
+    {
+        /// <summary>
+        /// Converts Architecture enum value to readable string
+        /// </summary>
+        /// <param name="architecture">Architecture enum value</param>
+        /// <returns>Human-readable architecture string</returns>
+        public static string ToDisplayString(this DismNativeApi.Architecture architecture)
+        {
+            return architecture switch
+            {
+                DismNativeApi.Architecture.X86 => "x86",
+                DismNativeApi.Architecture.X64 => "x64",
+                DismNativeApi.Architecture.ARM => "ARM",
+                DismNativeApi.Architecture.ARM64 => "ARM64",
+                DismNativeApi.Architecture.IA64 => "IA64",
+                DismNativeApi.Architecture.MIPS => "MIPS",
+                DismNativeApi.Architecture.Alpha => "Alpha",
+                DismNativeApi.Architecture.PowerPC => "PowerPC",
+                DismNativeApi.Architecture.SHX => "SHX",
+                DismNativeApi.Architecture.Alpha64 => "Alpha64",
+                DismNativeApi.Architecture.MSIL => "MSIL",
+                DismNativeApi.Architecture.IA32_ON_WIN64 => "IA32_on_Win64",
+                DismNativeApi.Architecture.Neutral => "Neutral",
+                DismNativeApi.Architecture.ARM32_ON_WIN64 => "ARM32_on_Win64",
+                DismNativeApi.Architecture.IA32_ON_ARM64 => "IA32_on_ARM64",
+                _ => $"Unknown ({(uint)architecture})"
+            };
+        }
+
+        /// <summary>
+        /// Converts uint architecture value to readable string
+        /// </summary>
+        /// <param name="architectureValue">Raw architecture value (e.g., 9 for x64)</param>
+        /// <returns>Human-readable architecture string</returns>
+        public static string ArchitectureToString(uint architectureValue)
+        {
+            if (Enum.IsDefined(typeof(DismNativeApi.Architecture), architectureValue))
+            {
+                return ((DismNativeApi.Architecture)architectureValue).ToDisplayString();
+            }
+            return $"Unknown ({architectureValue})";
+        }
     }
 }
