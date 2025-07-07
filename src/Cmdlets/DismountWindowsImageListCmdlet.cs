@@ -119,11 +119,6 @@ namespace PSWindowsImageTools.Cmdlets
                 for (int i = 0; i < _allMountedImages.Count; i++)
                 {
                     var mountedImage = _allMountedImages[i];
-                    var progress = (int)((double)(i + 1) / _allMountedImages.Count * 100);
-                    
-                    LoggingService.WriteProgress(this, "Dismounting Windows Images", 
-                        $"[{i + 1} of {_allMountedImages.Count}] - {mountedImage.ImageName}", 
-                        $"Dismounting from {mountedImage.MountPath.FullName} ({progress}%)", progress);
 
                     try
                     {
@@ -200,37 +195,38 @@ namespace PSWindowsImageTools.Cmdlets
                 var shouldSave = Save.IsPresent && !Discard.IsPresent;
                 var saveMode = shouldSave ? (Append.IsPresent ? "Save with Append" : "Save") : "Discard";
 
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath.FullName}");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Dismounting image from {mountedImage.MountPath.FullName} using native DISM API");
                 LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Mode: {saveMode}");
 
-                // Report dismount progress - start
-                LoggingService.WriteProgress(this, "Dismounting Windows Images",
-                    $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
-                    $"Initiating dismount operation from {mountedImage.MountPath.FullName} ({saveMode})...",
-                    (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
+                // Create native progress callback for real-time dismount progress
+                var progressCallback = ProgressService.CreateMountProgressCallback(
+                    this,
+                    "Dismounting Windows Images",
+                    mountedImage.ImageName ?? "Unknown Image",
+                    mountedImage.MountPath.FullName,
+                    currentIndex,
+                    totalCount);
 
                 var dismountStartTime = DateTime.UtcNow;
 
-                // Use DISM API to unmount the image
-                // Note: Microsoft.Dism doesn't support append mode directly, so we'll log a warning
-                if (Append.IsPresent && shouldSave)
-                {
-                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Append mode not supported by Microsoft.Dism API, using standard save");
-                }
-
-                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath.FullName, shouldSave);
+                // Use native DISM service for dismounting with real progress callbacks
+                using var nativeDismService = new NativeDismService();
+                var dismountSuccess = nativeDismService.UnmountImage(
+                    mountedImage.MountPath.FullName,
+                    shouldSave,
+                    progressCallback: progressCallback,
+                    cmdlet: this);
 
                 var dismountDuration = DateTime.UtcNow - dismountStartTime;
 
+                if (!dismountSuccess)
+                {
+                    throw new InvalidOperationException($"Failed to dismount image from {mountedImage.MountPath.FullName}");
+                }
+
                 result.Status = MountStatus.Unmounted;
 
-                // Report dismount progress - complete
-                LoggingService.WriteProgress(this, "Dismounting Windows Images",
-                    $"[{currentIndex} of {totalCount}] - {mountedImage.ImageName}",
-                    $"Dismount completed in {LoggingService.FormatDuration(dismountDuration)}",
-                    (int)((double)currentIndex / totalCount * 100));
-
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Image dismounted successfully (Duration: {LoggingService.FormatDuration(dismountDuration)})");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Image dismounted successfully using native API (Duration: {LoggingService.FormatDuration(dismountDuration)})");
 
                 // Remove mount directory if requested
                 if (RemoveDirectories.IsPresent)

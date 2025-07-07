@@ -106,12 +106,7 @@ namespace PSWindowsImageTools.Cmdlets
                 for (int i = 0; i < _allImageInfo.Count; i++)
                 {
                     var imageInfo = _allImageInfo[i];
-                    var progress = (int)((double)(i + 1) / _allImageInfo.Count * 100);
                     var wimGuid = sourcePathGuids[imageInfo.SourcePath];
-
-                    LoggingService.WriteProgress(this, "Mounting Windows Images",
-                        $"[{i + 1} of {_allImageInfo.Count}] - {imageInfo.Name}",
-                        $"Mounting Image Index {imageInfo.Index} ({progress}%)", progress);
 
                     try
                     {
@@ -191,28 +186,41 @@ namespace PSWindowsImageTools.Cmdlets
 
             try
             {
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Mounting image {imageInfo.Index} to {mountPath}");
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Mounting image {imageInfo.Index} to {mountPath} using native DISM API");
 
-                // Report mount progress - start
-                LoggingService.WriteProgress(this, "Mounting Windows Images",
-                    $"[{currentIndex} of {totalCount}] - {imageInfo.Name}",
-                    $"Initiating mount operation for image {imageInfo.Index}...",
-                    (int)((double)(currentIndex - 1) / totalCount * 100) + 10);
+                // Create native progress callback for real-time mount progress
+                var progressCallback = ProgressService.CreateMountProgressCallback(
+                    this,
+                    "Mounting Windows Images",
+                    imageInfo.Name,
+                    mountPath,
+                    currentIndex,
+                    totalCount);
 
                 var mountStartTime = DateTime.UtcNow;
-                Microsoft.Dism.DismApi.MountImage(imageInfo.SourcePath, mountPath, imageInfo.Index, readOnly: !ReadWrite.IsPresent);
+
+                // Use native DISM service for mounting with real progress callbacks
+                using var nativeDismService = new NativeDismService();
+                var mountSuccess = nativeDismService.MountImage(
+                    imageInfo.SourcePath,
+                    mountPath,
+                    (uint)imageInfo.Index,
+                    readOnly: !ReadWrite.IsPresent,
+                    progressCallback: progressCallback,
+                    cmdlet: this);
+
                 var mountDuration = DateTime.UtcNow - mountStartTime;
 
+                if (!mountSuccess)
+                {
+                    throw new InvalidOperationException($"Failed to mount image {imageInfo.Index} from {imageInfo.SourcePath}");
+                }
+
                 mountedImage.Status = MountStatus.Mounted;
+                mountedImage.MountedAt = DateTime.UtcNow;
 
-                // Report mount progress - complete
-                LoggingService.WriteProgress(this, "Mounting Windows Images",
-                    $"[{currentIndex} of {totalCount}] - {imageInfo.Name}",
-                    $"Mount completed in {LoggingService.FormatDuration(mountDuration)}",
-                    (int)((double)currentIndex / totalCount * 100));
+                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Image mounted successfully using native API: {imageInfo.Name} (Duration: {LoggingService.FormatDuration(mountDuration)})");
 
-                LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Image mounted successfully: {imageInfo.Name} (Duration: {LoggingService.FormatDuration(mountDuration)})");
-                
                 return mountedImage;
             }
             catch (Exception ex)

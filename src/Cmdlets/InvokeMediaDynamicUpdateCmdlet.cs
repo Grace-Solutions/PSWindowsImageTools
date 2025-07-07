@@ -386,10 +386,22 @@ namespace PSWindowsImageTools.Cmdlets
                 var mountPath = Path.Combine(_mountBasePath.FullName, $"Image_{image.Index}_{Guid.NewGuid():N}");
                 Directory.CreateDirectory(mountPath);
 
-                LoggingService.WriteVerbose(this, ServiceName, $"Mounting image {image.Index} to {mountPath}");
+                LoggingService.WriteVerbose(this, ServiceName, $"Mounting image {image.Index} to {mountPath} using native DISM API");
 
-                // Use DISM API to mount the image
-                Microsoft.Dism.DismApi.MountImage(image.SourcePath, mountPath, image.Index, readOnly: false);
+                // Use native DISM service for mounting with progress callbacks
+                using var nativeDismService = new NativeDismService();
+                var mountSuccess = nativeDismService.MountImage(
+                    image.SourcePath,
+                    mountPath,
+                    (uint)image.Index,
+                    readOnly: false,
+                    progressCallback: null, // No progress callback needed for internal operations
+                    cmdlet: this);
+
+                if (!mountSuccess)
+                {
+                    throw new InvalidOperationException($"Failed to mount image {image.Index} from {image.SourcePath}");
+                }
 
                 return new MountedWindowsImage
                 {
@@ -419,8 +431,20 @@ namespace PSWindowsImageTools.Cmdlets
         {
             try
             {
-                LoggingService.WriteVerbose(this, ServiceName, $"Dismounting image from {mountedImage.MountPath.FullName}");
-                Microsoft.Dism.DismApi.UnmountImage(mountedImage.MountPath.FullName, commitChanges: true);
+                LoggingService.WriteVerbose(this, ServiceName, $"Dismounting image from {mountedImage.MountPath.FullName} using native DISM API");
+
+                // Use native DISM service for dismounting
+                using var nativeDismService = new NativeDismService();
+                var dismountSuccess = nativeDismService.UnmountImage(
+                    mountedImage.MountPath.FullName,
+                    commitChanges: true,
+                    progressCallback: null, // No progress callback needed for internal operations
+                    cmdlet: this);
+
+                if (!dismountSuccess)
+                {
+                    LoggingService.WriteWarning(this, ServiceName, $"Failed to dismount image from {mountedImage.MountPath.FullName} using native API");
+                }
 
                 // Clean up mount directory
                 if (mountedImage.MountPath.Exists)

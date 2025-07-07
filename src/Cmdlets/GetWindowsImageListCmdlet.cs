@@ -200,20 +200,24 @@ namespace PSWindowsImageTools.Cmdlets
                         for (int i = 0; i < imageInfoList.Count; i++)
                         {
                             var imageInfo = imageInfoList[i];
-                            var progress = (int)((double)(i + 1) / imageInfoList.Count * 100);
-
-                            LoggingService.WriteProgress(this, "Processing Windows Images",
-                                $"[{i + 1} of {imageInfoList.Count}] - {imageInfo.Name}",
-                                $"Processing Image Index {imageInfo.Index} ({progress}%)", progress);
 
                             try
                             {
                                 var mountDir = ConfigurationService.CreateUniqueMountDirectory(mountRoot, imageInfo.Index, wimGuid);
                                 LoggingService.WriteVerbose(this, $"[{i + 1} of {imageInfoList.Count}] - Created mount directory: {mountDir}");
 
+                                // Create native progress callback for mount operation with real mount directory
+                                var progressCallback = ProgressService.CreateMountProgressCallback(
+                                    this,
+                                    "Processing Windows Images",
+                                    imageInfo.Name,
+                                    mountDir,
+                                    i + 1,
+                                    imageInfoList.Count);
+
                                 try
                                 {
-                                    var (advancedInfo, mountedImage) = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this, SkipDismount.IsPresent);
+                                    var (advancedInfo, mountedImage) = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this, SkipDismount.IsPresent, progressCallback);
                                     imageInfo.AdvancedInfo = advancedInfo;
                                     imageInfo.MountedImage = mountedImage;
 

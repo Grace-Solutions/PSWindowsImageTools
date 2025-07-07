@@ -10,51 +10,60 @@ namespace PSWindowsImageTools.Services
     /// <summary>
     /// Dedicated service for gathering advanced image information
     /// Orchestrates different specialized services for different types of operations
+    /// Uses native DISM API for real progress callbacks during mount operations
     /// </summary>
     public class AdvancedImageInfoService : IDisposable
     {
         private const string ServiceName = "AdvancedImageInfoService";
         private bool _disposed = false;
-        private bool _dismInitialized = false;
+        private readonly NativeDismService _nativeDismService;
 
         /// <summary>
-        /// Initializes the DISM API if not already initialized
+        /// Initializes a new instance of the AdvancedImageInfoService
         /// </summary>
-        private void Initialize()
+        public AdvancedImageInfoService()
         {
-            if (!_dismInitialized)
-            {
-                DismApi.Initialize(DismLogLevel.LogErrors);
-                _dismInitialized = true;
-            }
+            _nativeDismService = new NativeDismService();
         }
 
         /// <summary>
         /// Gets advanced registry information from an image by mounting it
         /// Reads Windows version info, installed software, and Windows Update configuration
+        /// Uses native DISM API with real progress callbacks for accurate mount progress
         /// </summary>
         /// <param name="imagePath">Path to the image file</param>
         /// <param name="imageIndex">Index of the image to mount</param>
         /// <param name="mountPath">Path where to mount the image</param>
-        /// <param name="cmdlet">Cmdlet for logging</param>
+        /// <param name="cmdlet">Cmdlet for logging and progress reporting</param>
         /// <param name="skipDismount">If true, keeps the image mounted and returns mount info</param>
+        /// <param name="progressCallback">Optional progress callback for mount operation</param>
         /// <returns>Tuple containing advanced image information and optional mounted image info</returns>
-        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false)
+        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false, Action<int, string>? progressCallback = null)
         {
-            Initialize();
             var advancedInfo = new WindowsImageAdvancedInfo();
             MountedWindowsImage? mountedImage = null;
 
             try
             {
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    $"Getting advanced registry info for image {imageIndex}");
+                    $"Getting advanced registry info for image {imageIndex} using native DISM API");
 
-                // Mount the image
-                DismApi.MountImage(imagePath, mountPath, imageIndex);
+                // Mount the image using native DISM API with progress callbacks
+                var mountSuccess = _nativeDismService.MountImage(
+                    imagePath,
+                    mountPath,
+                    (uint)imageIndex,
+                    readOnly: true,
+                    progressCallback: progressCallback,
+                    cmdlet: cmdlet);
+
+                if (!mountSuccess)
+                {
+                    throw new InvalidOperationException($"Failed to mount image {imageIndex} from {imagePath}");
+                }
 
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    $"Image {imageIndex} successfully mounted to {mountPath}");
+                    $"Image {imageIndex} successfully mounted to {mountPath} using native DISM API");
 
                 // Create mounted image info if we're keeping it mounted
                 if (skipDismount)
@@ -87,7 +96,12 @@ namespace PSWindowsImageTools.Services
                     {
                         try
                         {
-                            DismApi.UnmountImage(mountPath, false); // Discard changes
+                            // Use native DISM API for unmounting as well
+                            var unmountSuccess = _nativeDismService.UnmountImage(mountPath, false, cmdlet: cmdlet);
+                            if (!unmountSuccess)
+                            {
+                                LoggingService.WriteWarning(cmdlet, ServiceName, "Failed to unmount image using native API");
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -115,17 +129,13 @@ namespace PSWindowsImageTools.Services
         {
             if (!_disposed)
             {
-                if (_dismInitialized)
+                try
                 {
-                    try
-                    {
-                        DismApi.Shutdown();
-                    }
-                    catch
-                    {
-                        // Ignore shutdown errors
-                    }
-                    _dismInitialized = false;
+                    _nativeDismService?.Dispose();
+                }
+                catch
+                {
+                    // Ignore disposal errors
                 }
                 _disposed = true;
                 GC.SuppressFinalize(this);

@@ -286,6 +286,66 @@ namespace PSWindowsImageTools.Services
             }
         }
 
+        /// <summary>
+        /// Unmounts an image using native DISM API with progress reporting
+        /// </summary>
+        /// <param name="mountPath">Mount directory to unmount</param>
+        /// <param name="commitChanges">Whether to commit changes</param>
+        /// <param name="progressCallback">Progress callback</param>
+        /// <param name="cmdlet">Cmdlet for logging</param>
+        /// <returns>True if unmount succeeded</returns>
+        public bool UnmountImage(string mountPath, bool commitChanges = false, Action<int, string>? progressCallback = null, PSCmdlet? cmdlet = null)
+        {
+            Initialize();
+
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Unmounting image from {mountPath} (CommitChanges: {commitChanges})");
+
+                // Create progress callback wrapper
+                DismNativeApi.ProgressCallback? nativeCallback = null;
+                if (progressCallback != null)
+                {
+                    nativeCallback = (current, total, userData) =>
+                    {
+                        if (total > 0)
+                        {
+                            var percentage = (int)((current * 100) / total);
+                            progressCallback(percentage, $"Unmounting image: {percentage}%");
+                        }
+                        else
+                        {
+                            progressCallback(-1, "Unmounting image...");
+                        }
+                    };
+                }
+
+                uint unmountFlags = commitChanges ? 1u : 0u; // DISM_COMMIT_IMAGE = 1, DISM_DISCARD_IMAGE = 0
+
+                var result = DismNativeApi.DismUnmountImage(
+                    mountPath,
+                    unmountFlags,
+                    null, // Cancel handle
+                    nativeCallback!,
+                    IntPtr.Zero);
+
+                if (result != 0)
+                {
+                    LoggingService.WriteError(cmdlet, ServiceName, $"Failed to unmount image. HRESULT: 0x{result:X8}");
+                    return false;
+                }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName, "Image unmounted successfully using native API");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(cmdlet, ServiceName, $"Failed to unmount image: {ex.Message}", ex);
+                return false;
+            }
+        }
+
         #endregion
 
         #region Package Management
