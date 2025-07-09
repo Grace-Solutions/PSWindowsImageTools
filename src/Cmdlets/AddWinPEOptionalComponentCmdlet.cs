@@ -101,9 +101,9 @@ namespace PSWindowsImageTools.Cmdlets
             // Validate mounted images
             foreach (var mountedImage in MountedImages)
             {
-                if (!mountedImage.MountPath.Exists)
+                if (mountedImage.MountPath?.Exists != true)
                 {
-                    throw new ArgumentException($"Mount path does not exist: {mountedImage.MountPath.FullName}");
+                    throw new ArgumentException($"Mount path does not exist: {mountedImage.MountPath?.FullName ?? "Unknown"}");
                 }
 
                 if (mountedImage.IsReadOnly)
@@ -167,7 +167,7 @@ namespace PSWindowsImageTools.Cmdlets
             foreach (var image in MountedImages)
             {
                 LoggingService.WriteVerbose(this, ComponentName, 
-                    $"  - {image.ImageName} (Index {image.ImageIndex}) at {image.MountPath.FullName}");
+                    $"  - {image.ImageName} (Index {image.ImageIndex}) at {image.MountPath?.FullName ?? "Unknown"}");
             }
         }
 

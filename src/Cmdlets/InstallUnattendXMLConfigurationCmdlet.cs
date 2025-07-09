@@ -122,6 +122,8 @@ namespace PSWindowsImageTools.Cmdlets
             
             foreach (var image in MountedImages)
             {
+                if (image.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var unattendPath = System.IO.Path.Combine(image.MountPath.FullName, "Windows", "Panther", "unattend.xml");
                 WriteObject($"  Target: {image.ImageName} ({image.MountPath.FullName})");
                 WriteObject($"  Configuration would be written to: {unattendPath}");

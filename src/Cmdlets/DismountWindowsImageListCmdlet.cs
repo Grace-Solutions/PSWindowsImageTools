@@ -125,11 +125,11 @@ namespace PSWindowsImageTools.Cmdlets
                         var result = DismountSingleImage(mountedImage, i + 1, _allMountedImages.Count);
                         results.Add(result);
                         
-                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully dismounted: {mountedImage.MountPath.FullName}");
+                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully dismounted: {mountedImage.MountPath?.FullName ?? "Unknown path"}");
                     }
                     catch (Exception ex)
                     {
-                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to dismount {mountedImage.MountPath.FullName}: {ex.Message}", ex);
+                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to dismount {mountedImage.MountPath?.FullName ?? "Unknown path"}: {ex.Message}", ex);
                         
                         // Update status to failed
                         mountedImage.Status = MountStatus.Failed;
@@ -184,9 +184,9 @@ namespace PSWindowsImageTools.Cmdlets
             try
             {
                 // Validate mount path exists
-                if (!mountedImage.MountPath.Exists)
+                if (mountedImage.MountPath == null || !mountedImage.MountPath.Exists)
                 {
-                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Mount path does not exist: {mountedImage.MountPath.FullName}");
+                    LoggingService.WriteWarning(this, $"[{currentIndex} of {totalCount}] - Mount path does not exist: {mountedImage.MountPath?.FullName ?? "Unknown path"}");
                     result.Status = MountStatus.Unmounted;
                     return result;
                 }
@@ -261,7 +261,7 @@ namespace PSWindowsImageTools.Cmdlets
                     {
                         LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force flag specified, attempting cleanup");
                         
-                        if (mountedImage.MountPath.Exists)
+                        if (mountedImage.MountPath?.Exists == true)
                         {
                             mountedImage.MountPath.Delete(true);
                             LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Force removed mount directory: {mountedImage.MountPath.FullName}");

@@ -91,7 +91,7 @@ namespace PSWindowsImageTools.Cmdlets
 
                     LoggingService.WriteProgress(this, "Installing INF Drivers",
                         $"[{i + 1} of {_allMountedImages.Count}] - {mountedImage.ImageName}",
-                        $"Processing {mountedImage.MountPath.FullName} ({imageProgress}%)", imageProgress);
+                        $"Processing {mountedImage.MountPath?.FullName ?? "Unknown"} ({imageProgress}%)", imageProgress);
 
                     try
                     {
@@ -160,6 +160,9 @@ namespace PSWindowsImageTools.Cmdlets
 
             try
             {
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
+
                 using (var session = DismApi.OpenOfflineSession(mountedImage.MountPath.FullName))
                 {
                     for (int i = 0; i < drivers.Count; i++)
@@ -191,7 +194,7 @@ namespace PSWindowsImageTools.Cmdlets
             catch (Exception ex)
             {
                 LoggingService.WriteError(this, ComponentName,
-                    $"[{currentImageIndex} of {totalImages}] - Failed to open DISM session for {mountedImage.MountPath.FullName}: {ex.Message}", ex);
+                    $"[{currentImageIndex} of {totalImages}] - Failed to open DISM session for {mountedImage.MountPath?.FullName ?? "Unknown"}: {ex.Message}", ex);
                 
                 // Mark all drivers as failed
                 result.FailedDrivers.AddRange(drivers);

@@ -204,6 +204,10 @@ namespace PSWindowsImageTools.Services
                     $"Applying Autopilot configuration to image: {mountedImage.ImageName}");
 
                 // Create the Autopilot directory structure
+                if (mountedImage.MountPath == null)
+                {
+                    throw new InvalidOperationException("Mount path is null");
+                }
                 var autopilotDir = Path.Combine(mountedImage.MountPath.FullName, "Windows", "Provisioning", "Autopilot");
                 if (!Directory.Exists(autopilotDir))
                 {

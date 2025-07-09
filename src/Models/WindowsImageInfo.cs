@@ -63,7 +63,7 @@ namespace PSWindowsImageTools.Models
             get
             {
                 // If we have advanced registry info with UBR, combine it with the DISM version
-                if (AdvancedInfo?.RegistryInfo?.TryGetValue("VersionInfo.UBR", out var ubrValue) == true &&
+                if (Advanced?.CurrentVersion?.TryGetValue("UBR", out var ubrValue) == true &&
                     Version != null &&
                     ubrValue != null)
                 {
@@ -138,7 +138,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Advanced metadata (populated when Advanced flag is used)
         /// </summary>
-        public WindowsImageAdvancedInfo? AdvancedInfo { get; set; }
+        public WindowsImageAdvancedInfo? Advanced { get; set; }
 
         /// <summary>
         /// Mounted image information (populated when SkipDismount is used)
@@ -177,11 +177,6 @@ namespace PSWindowsImageTools.Models
         public List<string> InstalledPackages { get; set; } = new List<string>();
 
         /// <summary>
-        /// Registry information
-        /// </summary>
-        public Dictionary<string, object> RegistryInfo { get; set; } = new Dictionary<string, object>();
-
-        /// <summary>
         /// Installed drivers
         /// </summary>
         public List<string> InstalledDrivers { get; set; } = new List<string>();
@@ -190,5 +185,20 @@ namespace PSWindowsImageTools.Models
         /// Update information
         /// </summary>
         public List<string> InstalledUpdates { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Windows version information from registry
+        /// </summary>
+        public Dictionary<string, object> CurrentVersion { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>
+        /// Installed software from registry
+        /// </summary>
+        public List<Software> Software { get; set; } = new List<Software>();
+
+        /// <summary>
+        /// Windows Update configuration from registry
+        /// </summary>
+        public Dictionary<string, object> WindowsUpdate { get; set; } = new Dictionary<string, object>();
     }
 }

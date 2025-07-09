@@ -384,9 +384,11 @@ namespace PSWindowsImageTools.Cmdlets
             try
             {
                 LoggingService.WriteVerbose(this,
-                    $"Installing {package.KBNumber} on mounted image {mountedImage.ImageName} at {mountedImage.MountPath.FullName}");
+                    $"Installing {package.KBNumber} on mounted image {mountedImage.ImageName} at {mountedImage.MountPath?.FullName ?? "Unknown"}");
 
                 // Use proper DISM API to install the package on the mounted image
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 using var session = Microsoft.Dism.DismApi.OpenOfflineSession(mountedImage.MountPath.FullName);
                 Microsoft.Dism.DismApi.AddPackage(session, package.LocalFile.FullName, IgnoreCheck.IsPresent, PreventPending.IsPresent);
 

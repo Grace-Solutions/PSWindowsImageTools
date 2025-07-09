@@ -109,12 +109,12 @@ namespace PSWindowsImageTools.Services
             };
 
             LoggingService.WriteVerbose(cmdlet, ServiceName, 
-                $"Installing {components.Length} components into {mountedImage.ImageName} at {mountedImage.MountPath.FullName}");
+                $"Installing {components.Length} components into {mountedImage.ImageName} at {mountedImage.MountPath?.FullName ?? "Unknown"}");
 
             // Validate mount path
-            if (!mountedImage.MountPath.Exists)
+            if (mountedImage.MountPath?.Exists != true)
             {
-                throw new DirectoryNotFoundException($"Mount path does not exist: {mountedImage.MountPath.FullName}");
+                throw new DirectoryNotFoundException($"Mount path does not exist: {mountedImage.MountPath?.FullName ?? "Unknown"}");
             }
 
             // Sort components by dependencies (basic dependency resolution)
@@ -226,6 +226,8 @@ namespace PSWindowsImageTools.Services
                     $"Checking if {component.Name} is already installed");
 
                 // Use DISM to check installed packages
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var dismArgs = $"/Image:\"{mountedImage.MountPath.FullName}\" /Get-Packages /Format:Table";
                 var processInfo = new ProcessStartInfo
                 {
@@ -291,6 +293,8 @@ namespace PSWindowsImageTools.Services
                 }
 
                 // Use DISM to install the component with process monitoring
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var dismArgs = $"/Image:\"{mountedImage.MountPath.FullName}\" /Add-Package /PackagePath:\"{component.ComponentFile.FullName}\"";
 
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
@@ -337,6 +341,8 @@ namespace PSWindowsImageTools.Services
 
                 // Use DISM to get package info
                 var packageName = $"WinPE-{component.Name}";
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var dismArgs = $"/Image:\"{mountedImage.MountPath.FullName}\" /Get-PackageInfo /PackageName:\"{packageName}\"";
 
                 var processInfo = new ProcessStartInfo
@@ -399,6 +405,8 @@ namespace PSWindowsImageTools.Services
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Getting installed components from {mountedImage.ImageName}");
 
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var dismArgs = $"/Image:\"{mountedImage.MountPath.FullName}\" /Get-Packages";
 
                 var processInfo = new ProcessStartInfo
@@ -499,6 +507,8 @@ namespace PSWindowsImageTools.Services
                 try
                 {
                     var packageName = $"WinPE-{componentName}";
+                    if (mountedImage.MountPath == null)
+                        throw new InvalidOperationException("Mount path is null");
                     var dismArgs = $"/Image:\"{mountedImage.MountPath.FullName}\" /Remove-Package /PackageName:\"{packageName}\"";
 
                     var processInfo = new ProcessStartInfo

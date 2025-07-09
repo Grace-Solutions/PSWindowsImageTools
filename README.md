@@ -25,6 +25,7 @@ A comprehensive PowerShell module for Windows image management, ADK automation, 
 ### 🔧 **Advanced Image Customization**
 - Registry operations with hive mounting/unmounting
 - Driver integration with INF parsing and hardware ID extraction
+- Wallpaper and lockscreen configuration with multiple resolutions
 - Autopilot configuration management
 - Unattend.xml creation and modification
 - AppX package removal with regex filtering
@@ -93,9 +94,11 @@ $mounted | Dismount-WindowsImageList -Save
 |--------|-------------|
 | `Get-INFDriverList` | Parse INF files and extract driver info |
 | `Add-INFDriverList` | Install drivers into mounted images |
+| `Set-WindowsImageWallpaper` | Configure wallpaper and lockscreen images |
 | `Remove-AppXProvisionedPackageList` | Remove AppX packages with filtering |
 | `Get-RegistryOperationList` | Parse registry files |
 | `Write-RegistryOperationList` | Apply registry operations |
+| `Read-RegistryHiveOnDemand` | Read registry hives without mounting |
 | `Add-SetupCompleteAction` | Add custom first-boot actions |
 
 ### **Autopilot & Configuration**
@@ -140,6 +143,9 @@ $mounted | Add-INFDriverList -Drivers $drivers
 # Install updates
 $mounted | Install-WindowsImageUpdate -UpdatePackages $updates
 
+# Configure wallpaper and lockscreen
+$mounted | Set-WindowsImageWallpaper -WallpaperPath "C:\Branding\wallpaper.jpg" -LockscreenPath "C:\Branding\lockscreen.jpg"
+
 # Configure Autopilot
 $autopilot = New-AutopilotConfiguration -TenantId "your-tenant-id" -DeviceName "%SERIAL%"
 $mounted | Install-AutopilotConfiguration -Configuration $autopilot
@@ -148,6 +154,28 @@ $mounted | Install-AutopilotConfiguration -Configuration $autopilot
 $mounted | Remove-AppXProvisionedPackageList -InclusionFilter "Xbox|Candy|Solitaire" -ExclusionFilter "Store|Calculator"
 
 # Save and cleanup
+$mounted | Dismount-WindowsImageList -Save
+```
+
+### **Wallpaper and Lockscreen Configuration**
+```powershell
+# Configure wallpaper and lockscreen for mounted images
+$mounted = Get-WindowsImageList -ImagePath "install.wim" | Mount-WindowsImageList -MountPath "C:\Mount" -ReadWrite
+
+# Set both wallpaper and lockscreen
+$mounted | Set-WindowsImageWallpaper -WallpaperPath "C:\Branding\corporate-wallpaper.jpg" -LockscreenPath "C:\Branding\lockscreen.jpg"
+
+# Set wallpaper only with custom resolutions
+$customResolutions = @(
+    [PSWindowsImageTools.Models.ResolutionInfo]::new("img0_", 1920, 1080),
+    [PSWindowsImageTools.Models.ResolutionInfo]::new("img0_", 2560, 1440),
+    [PSWindowsImageTools.Models.ResolutionInfo]::new("img0_", 3840, 2160)
+)
+$mounted | Set-WindowsImageWallpaper -WallpaperPath "C:\Branding\wallpaper.png" -ResolutionList $customResolutions
+
+# Direct path approach (without pipeline)
+Set-WindowsImageWallpaper -MountPath "C:\Mount" -WallpaperPath "C:\Branding\wallpaper.jpg"
+
 $mounted | Dismount-WindowsImageList -Save
 ```
 

@@ -34,7 +34,7 @@ namespace PSWindowsImageTools.Cmdlets
         /// </summary>
         [Parameter(
             HelpMessage = "Enables advanced metadata collection by mounting images (slower but more detailed)")]
-        public SwitchParameter IncludeAdvanced { get; set; }
+        public SwitchParameter Advanced { get; set; }
 
         /// <summary>
         /// Calculate SHA256 hash of the source image file (slower but provides integrity verification)
@@ -65,6 +65,19 @@ namespace PSWindowsImageTools.Cmdlets
         public SwitchParameter SkipDismount { get; set; }
 
         /// <summary>
+        /// Mount images as read-write (default is read-only)
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        public SwitchParameter ReadWrite { get; set; }
+
+        /// <summary>
+        /// Custom mount root directory (uses temp if not specified)
+        /// </summary>
+        [Parameter(Mandatory = false)]
+        [ValidateNotNull]
+        public DirectoryInfo? MountRoot { get; set; }
+
+        /// <summary>
         /// Processes the cmdlet
         /// </summary>
         protected override void ProcessRecord()
@@ -89,8 +102,8 @@ namespace PSWindowsImageTools.Cmdlets
                     return;
                 }
 
-                // Use default mount root directory
-                var mountRoot = ConfigurationService.DefaultMountRootDirectory;
+                // Use provided mount root directory or default
+                var mountRoot = MountRoot?.FullName ?? ConfigurationService.DefaultMountRootDirectory;
                 LoggingService.WriteVerbose(this, $"Using mount root directory: {mountRoot}");
 
                 // Validate mount root directory
@@ -193,7 +206,7 @@ namespace PSWindowsImageTools.Cmdlets
                     var wimGuid = Guid.NewGuid().ToString();
 
                     // Get advanced information if requested
-                    if (IncludeAdvanced.IsPresent)
+                    if (Advanced.IsPresent)
                     {
                         LoggingService.WriteVerbose(this, "Advanced metadata requested, mounting images...");
 
@@ -217,8 +230,8 @@ namespace PSWindowsImageTools.Cmdlets
 
                                 try
                                 {
-                                    var (advancedInfo, mountedImage) = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this, SkipDismount.IsPresent, progressCallback);
-                                    imageInfo.AdvancedInfo = advancedInfo;
+                                    var (advancedInfo, mountedImage) = dismService.GetAdvancedImageInfo(imageFilePath, imageInfo.Index, mountDir, this, SkipDismount.IsPresent, ReadWrite.IsPresent, progressCallback);
+                                    imageInfo.Advanced = advancedInfo;
                                     imageInfo.MountedImage = mountedImage;
 
                                     if (mountedImage != null)

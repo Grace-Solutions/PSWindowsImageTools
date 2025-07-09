@@ -97,31 +97,87 @@ namespace PSWindowsImageTools.Services
         /// <param name="mountPath">Path where to mount the image</param>
         /// <param name="cmdlet">Cmdlet for logging</param>
         /// <param name="skipDismount">If true, keeps the image mounted and returns mount info</param>
+        /// <param name="readWrite">If true, mounts the image in read-write mode</param>
         /// <param name="progressCallback">Optional progress callback for mount operation</param>
         /// <returns>Tuple containing advanced image information and optional mounted image info</returns>
-        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false, Action<int, string>? progressCallback = null)
+        public (WindowsImageAdvancedInfo AdvancedInfo, MountedWindowsImage? MountedImage) GetAdvancedImageInfo(string imagePath, int imageIndex, string mountPath, PSCmdlet cmdlet, bool skipDismount = false, bool readWrite = false, Action<int, string>? progressCallback = null)
         {
             var advancedInfo = new WindowsImageAdvancedInfo();
             MountedWindowsImage? mountedImage = null;
 
             try
             {
+                // Validate parameters
+                if (string.IsNullOrWhiteSpace(imagePath))
+                    throw new ArgumentException("Image path cannot be null or empty", nameof(imagePath));
+                if (string.IsNullOrWhiteSpace(mountPath))
+                    throw new ArgumentException("Mount path cannot be null or empty", nameof(mountPath));
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"GetAdvancedImageInfo called with imagePath='{imagePath}', mountPath='{mountPath}', imageIndex={imageIndex}");
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Mounting image {imageIndex} for advanced information collection");
 
                 // Mount the image using native DISM API with progress callbacks
                 using var nativeDismService = new NativeDismService();
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Mounting image: {imagePath} (index {imageIndex}) to {mountPath}");
+                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Mount parameters: readOnly={!readWrite}");
+
                 var mountSuccess = nativeDismService.MountImage(
                     imagePath,
                     mountPath,
                     (uint)imageIndex,
-                    readOnly: true,
+                    readOnly: !readWrite,
                     progressCallback: progressCallback,
                     cmdlet: cmdlet);
 
                 if (!mountSuccess)
                 {
                     throw new InvalidOperationException($"Failed to mount image {imageIndex} from {imagePath}");
+                }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Mount operation completed successfully");
+
+                // Verify mount contents immediately after mount
+                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Verifying mount contents at: {mountPath}");
+                if (Directory.Exists(mountPath))
+                {
+                    var rootItems = Directory.GetFileSystemEntries(mountPath);
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Root items count: {rootItems.Length}");
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Root items: {string.Join(", ", rootItems.Take(10).Select(Path.GetFileName))}");
+
+                    var windowsPath = Path.Combine(mountPath, "Windows");
+                    if (Directory.Exists(windowsPath))
+                    {
+                        var windowsItems = Directory.GetFileSystemEntries(windowsPath);
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Windows directory items count: {windowsItems.Length}");
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Windows items: {string.Join(", ", windowsItems.Take(10).Select(Path.GetFileName))}");
+
+                        var system32Path = Path.Combine(windowsPath, "System32");
+                        if (Directory.Exists(system32Path))
+                        {
+                            var configPath = Path.Combine(system32Path, "config");
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"System32\\config exists: {Directory.Exists(configPath)}");
+                            if (Directory.Exists(configPath))
+                            {
+                                var configItems = Directory.GetFileSystemEntries(configPath);
+                                LoggingService.WriteVerbose(cmdlet, ServiceName, $"Config directory items: {string.Join(", ", configItems.Select(Path.GetFileName))}");
+                            }
+                        }
+                        else
+                        {
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, "System32 directory not found in Windows");
+                        }
+                    }
+                    else
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, "Windows directory not found in mount");
+                    }
+                }
+                else
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName, $"Mount path does not exist after mount: {mountPath}");
                 }
 
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
@@ -137,7 +193,7 @@ namespace PSWindowsImageTools.Services
                         ImageIndex = imageIndex,
                         MountPath = new DirectoryInfo(mountPath),
                         Status = MountStatus.Mounted,
-                        IsReadOnly = true,
+                        IsReadOnly = !readWrite,
                         MountedAt = DateTime.UtcNow
                     };
 
@@ -170,6 +226,9 @@ namespace PSWindowsImageTools.Services
                             {
                                 LoggingService.WriteWarning(cmdlet, ServiceName, "Failed to unmount image using native API");
                             }
+
+                            // Clean up mount directory and GUID folder after successful unmount
+                            CleanupMountDirectory(mountPath, cmdlet);
                         }
                         catch (Exception ex)
                         {
@@ -185,6 +244,58 @@ namespace PSWindowsImageTools.Services
                 LoggingService.WriteError(cmdlet, ServiceName,
                     $"Failed to get advanced image information: {ex.Message}", ex);
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Cleans up mount directory and parent GUID folder after dismount
+        /// </summary>
+        /// <param name="mountPath">Path to the mount directory</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        private void CleanupMountDirectory(string mountPath, PSCmdlet cmdlet)
+        {
+            try
+            {
+                if (Directory.Exists(mountPath))
+                {
+                    // Remove the mount directory (e.g., .../GUID/1)
+                    Directory.Delete(mountPath, true);
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"Cleaned up mount directory: {mountPath}");
+
+                    // Get the parent GUID directory (e.g., .../GUID)
+                    var parentDir = Directory.GetParent(mountPath);
+                    if (parentDir != null && parentDir.Exists)
+                    {
+                        // Check if the GUID directory is empty or only contains empty subdirectories
+                        if (IsDirectoryEmptyOrContainsOnlyEmptyDirectories(parentDir.FullName))
+                        {
+                            Directory.Delete(parentDir.FullName, true);
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Cleaned up GUID directory: {parentDir.FullName}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteWarning(cmdlet, ServiceName, $"Failed to clean up mount directory {mountPath}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Checks if a directory is empty or contains only empty subdirectories
+        /// </summary>
+        /// <param name="directoryPath">Path to check</param>
+        /// <returns>True if directory is empty or contains only empty subdirectories</returns>
+        private bool IsDirectoryEmptyOrContainsOnlyEmptyDirectories(string directoryPath)
+        {
+            try
+            {
+                var files = Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
+                return files.Length == 0;
+            }
+            catch
+            {
+                return false;
             }
         }
 

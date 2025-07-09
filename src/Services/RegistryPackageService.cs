@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Management.Automation;
 using Registry;
+using PSWindowsImageTools.Models;
+using PSWindowsImageTools.Services;
 
 namespace PSWindowsImageTools.Services
 {
@@ -14,6 +17,58 @@ namespace PSWindowsImageTools.Services
     {
         private const string ServiceName = "RegistryPackageService";
         private bool _disposed = false;
+
+        /// <summary>
+        /// Reads Windows version information from registry hive file
+        /// </summary>
+        /// <param name="hiveFilePath">Path to the SOFTWARE hive file</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>Dictionary containing Windows version information</returns>
+        public Dictionary<string, object> ReadWindowsVersionInfoFromHive(string hiveFilePath, PSCmdlet? cmdlet = null)
+        {
+            var versionInfo = new Dictionary<string, object>();
+
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Reading Windows version information directly from hive: {hiveFilePath}");
+
+                if (!File.Exists(hiveFilePath))
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
+                        $"SOFTWARE hive not found at: {hiveFilePath}");
+                    return versionInfo;
+                }
+
+                var hive = new RegistryHiveOnDemand(hiveFilePath);
+                var currentVersionKey = hive.GetKey(@"Microsoft\Windows NT\CurrentVersion");
+
+                if (currentVersionKey != null)
+                {
+                    var values = currentVersionKey.Values;
+
+                    foreach (var value in values)
+                    {
+                        versionInfo[value.ValueName] = value.ValueData;
+                    }
+                }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Successfully read {versionInfo.Count} version properties");
+
+                // Force cleanup
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(cmdlet, ServiceName,
+                    $"Failed to read Windows version information from hive: {ex.Message}", ex);
+            }
+
+            return versionInfo;
+        }
 
         /// <summary>
         /// Reads Windows version information from offline registry
@@ -31,10 +86,33 @@ namespace PSWindowsImageTools.Services
                     $"Reading Windows version info using RegistryHiveOnDemand from: {mountPath}");
 
                 var softwareHivePath = Path.Combine(mountPath, "Windows", "System32", "config", "SOFTWARE");
-                
+
                 if (!File.Exists(softwareHivePath))
                 {
-                    LoggingService.WriteWarning(cmdlet, ServiceName, 
+                    // Detailed debugging for why File.Exists() returns false
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"File.Exists('{softwareHivePath}') returned false");
+
+                    try
+                    {
+                        var fileInfo = new FileInfo(softwareHivePath);
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"FileInfo.Exists: {fileInfo.Exists}");
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"FileInfo.Length: {(fileInfo.Exists ? fileInfo.Length.ToString() : "N/A")}");
+
+                        var dirInfo = new DirectoryInfo(Path.GetDirectoryName(softwareHivePath)!);
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Parent directory exists: {dirInfo.Exists}");
+
+                        if (dirInfo.Exists)
+                        {
+                            var files = dirInfo.GetFiles().Select(f => f.Name);
+                            LoggingService.WriteVerbose(cmdlet, ServiceName, $"Files in config directory: {string.Join(", ", files)}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName, $"Error checking file: {ex.Message}");
+                    }
+
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
                         $"SOFTWARE hive not found at: {softwareHivePath}");
                     return versionInfo;
                 }
@@ -48,8 +126,7 @@ namespace PSWindowsImageTools.Services
                     
                     foreach (var value in values)
                     {
-                        var key = $"VersionInfo.{value.ValueName}";
-                        versionInfo[key] = value.ValueData;
+                        versionInfo[value.ValueName] = value.ValueData;
                     }
                 }
 
@@ -92,15 +169,10 @@ namespace PSWindowsImageTools.Services
                     registryInfo[item.Key] = item.Value;
                 }
 
-                // Read installed software
-                var softwareInfo = ReadInstalledSoftware(mountPath, cmdlet);
-                foreach (var item in softwareInfo)
-                {
-                    registryInfo[item.Key] = item.Value;
-                }
+                // Note: Software reading is now handled by GetInstalledSoftware() method
 
                 // Read Windows Update configuration
-                var wuConfigInfo = ReadWindowsUpdateConfig(mountPath, cmdlet);
+                var wuConfigInfo = ReadWindowsUpdateConfiguration(mountPath, cmdlet);
                 foreach (var item in wuConfigInfo)
                 {
                     registryInfo[item.Key] = item.Value;
@@ -118,37 +190,89 @@ namespace PSWindowsImageTools.Services
             return registryInfo;
         }
 
+
+
+
+
         /// <summary>
-        /// Reads installed software from both regular and WOW64 uninstall keys
+        /// Gets installed software as a list of Software objects from a hive file
         /// </summary>
-        /// <param name="mountPath">Path where the Windows image is mounted</param>
+        /// <param name="hiveFilePath">Path to the SOFTWARE hive file</param>
         /// <param name="cmdlet">PowerShell cmdlet for logging</param>
-        /// <returns>Dictionary containing software information</returns>
-        private Dictionary<string, object> ReadInstalledSoftware(string mountPath, PSCmdlet? cmdlet)
+        /// <returns>List of installed software</returns>
+        public List<Software> GetInstalledSoftwareFromHive(string hiveFilePath, PSCmdlet? cmdlet = null)
         {
-            var softwareInfo = new Dictionary<string, object>();
-            var softwareList = new List<Dictionary<string, object>>();
+            var softwareList = new List<Software>();
 
             try
             {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Reading installed software directly from hive: {hiveFilePath}");
+
+                if (!File.Exists(hiveFilePath))
+                {
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
+                        $"SOFTWARE hive not found at: {hiveFilePath}");
+                    return softwareList;
+                }
+
+                var hive = new RegistryHiveOnDemand(hiveFilePath);
+
+                // Read from regular uninstall key
+                ReadUninstallKeyForSoftware(hive, @"Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
+
+                // Read from WOW64 uninstall key for 32-bit apps on 64-bit systems
+                ReadUninstallKeyForSoftware(hive, @"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Found {softwareList.Count} installed software entries");
+
+                // Force cleanup
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteError(cmdlet, ServiceName,
+                    $"Failed to read installed software from hive: {ex.Message}", ex);
+            }
+
+            return softwareList;
+        }
+
+        /// <summary>
+        /// Gets installed software as a list of Software objects
+        /// </summary>
+        /// <param name="mountPath">Path where the Windows image is mounted</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        /// <returns>List of installed software</returns>
+        public List<Software> GetInstalledSoftware(string mountPath, PSCmdlet? cmdlet = null)
+        {
+            var softwareList = new List<Software>();
+
+            try
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Reading installed software using RegistryHiveOnDemand from: {mountPath}");
+
                 var softwareHivePath = Path.Combine(mountPath, "Windows", "System32", "config", "SOFTWARE");
-                
+
                 if (!File.Exists(softwareHivePath))
                 {
-                    LoggingService.WriteWarning(cmdlet, ServiceName, 
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"GetInstalledSoftware - Mount path exists: {Directory.Exists(mountPath)}");
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
                         $"SOFTWARE hive not found at: {softwareHivePath}");
-                    return softwareInfo;
+                    return softwareList;
                 }
 
                 var hive = new RegistryHiveOnDemand(softwareHivePath);
 
                 // Read from regular uninstall key
-                ReadUninstallKey(hive, @"Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
+                ReadUninstallKeyForSoftware(hive, @"Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
 
                 // Read from WOW64 uninstall key
-                ReadUninstallKey(hive, @"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
-
-                softwareInfo["Software"] = softwareList.ToArray();
+                ReadUninstallKeyForSoftware(hive, @"WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", softwareList, cmdlet);
 
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Found {softwareList.Count} installed software entries");
@@ -164,59 +288,57 @@ namespace PSWindowsImageTools.Services
                     $"Failed to read installed software: {ex.Message}");
             }
 
-            return softwareInfo;
+            return softwareList;
         }
 
         /// <summary>
-        /// Reads software entries from a specific uninstall registry key
+        /// Reads Windows Update configuration from registry hive file
         /// </summary>
-        /// <param name="hive">Registry hive</param>
-        /// <param name="uninstallKeyPath">Path to uninstall key</param>
-        /// <param name="softwareList">List to add software entries to</param>
+        /// <param name="hiveFilePath">Path to the SOFTWARE hive file</param>
         /// <param name="cmdlet">PowerShell cmdlet for logging</param>
-        private void ReadUninstallKey(RegistryHiveOnDemand hive, string uninstallKeyPath,
-            List<Dictionary<string, object>> softwareList, PSCmdlet? cmdlet)
+        /// <returns>Dictionary containing Windows Update configuration</returns>
+        public Dictionary<string, object> ReadWindowsUpdateConfigurationFromHive(string hiveFilePath, PSCmdlet? cmdlet)
         {
+            var wuConfigInfo = new Dictionary<string, object>();
+
             try
             {
-                var uninstallKey = hive.GetKey(uninstallKeyPath);
-                if (uninstallKey == null)
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Reading Windows Update configuration directly from hive: {hiveFilePath}");
+
+                if (!File.Exists(hiveFilePath))
                 {
-                    return;
+                    LoggingService.WriteWarning(cmdlet, ServiceName,
+                        $"SOFTWARE hive not found at: {hiveFilePath}");
+                    return wuConfigInfo;
                 }
 
-                foreach (var subKey in uninstallKey.SubKeys)
+                var hive = new RegistryHiveOnDemand(hiveFilePath);
+                var wuKey = hive.GetKey(@"Policies\Microsoft\Windows\WindowsUpdate");
+
+                if (wuKey != null)
                 {
-                    try
+                    foreach (var value in wuKey.Values)
                     {
-                        var displayName = GetStringValue(subKey, "DisplayName");
-                        if (!string.IsNullOrEmpty(displayName))
-                        {
-                            var registryKeyPath = $@"HKLM\SOFTWARE\{uninstallKeyPath}\{subKey.KeyName}";
-
-                            var software = new Dictionary<string, object>
-                            {
-                                ["DisplayName"] = displayName ?? string.Empty,
-                                ["DisplayVersion"] = GetStringValue(subKey, "DisplayVersion") ?? string.Empty,
-                                ["Publisher"] = GetStringValue(subKey, "Publisher") ?? string.Empty,
-                                ["RegistryKeyPath"] = registryKeyPath
-                            };
-
-                            softwareList.Add(software);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LoggingService.WriteVerbose(cmdlet, ServiceName,
-                            $"Error reading software entry {subKey.KeyName}: {ex.Message}");
+                        wuConfigInfo[value.ValueName] = value.ValueData;
                     }
                 }
+
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Read {wuConfigInfo.Count} Windows Update configuration properties");
+
+                // Force cleanup
+                hive = null;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
             catch (Exception ex)
             {
-                LoggingService.WriteVerbose(cmdlet, ServiceName,
-                    $"Error reading uninstall key {uninstallKeyPath}: {ex.Message}");
+                LoggingService.WriteError(cmdlet, ServiceName,
+                    $"Failed to read Windows Update configuration from hive: {ex.Message}", ex);
             }
+
+            return wuConfigInfo;
         }
 
         /// <summary>
@@ -225,16 +347,17 @@ namespace PSWindowsImageTools.Services
         /// <param name="mountPath">Path where the Windows image is mounted</param>
         /// <param name="cmdlet">PowerShell cmdlet for logging</param>
         /// <returns>Dictionary containing Windows Update configuration</returns>
-        private Dictionary<string, object> ReadWindowsUpdateConfig(string mountPath, PSCmdlet? cmdlet)
+        public Dictionary<string, object> ReadWindowsUpdateConfiguration(string mountPath, PSCmdlet? cmdlet)
         {
             var wuConfigInfo = new Dictionary<string, object>();
 
             try
             {
                 var softwareHivePath = Path.Combine(mountPath, "Windows", "System32", "config", "SOFTWARE");
-                
+
                 if (!File.Exists(softwareHivePath))
                 {
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, $"ReadWindowsUpdateConfiguration - SOFTWARE hive not found at: {softwareHivePath}");
                     return wuConfigInfo;
                 }
 
@@ -245,8 +368,7 @@ namespace PSWindowsImageTools.Services
                 {
                     foreach (var value in wuKey.Values)
                     {
-                        var key = $"WUConfig.{value.ValueName}";
-                        wuConfigInfo[key] = value.ValueData;
+                        wuConfigInfo[value.ValueName] = value.ValueData;
                     }
                 }
 
@@ -305,6 +427,92 @@ namespace PSWindowsImageTools.Services
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Reads uninstall registry key and creates Software objects
+        /// </summary>
+        /// <param name="hive">Registry hive</param>
+        /// <param name="keyPath">Registry key path</param>
+        /// <param name="softwareList">List to add software entries to</param>
+        /// <param name="cmdlet">PowerShell cmdlet for logging</param>
+        private void ReadUninstallKeyForSoftware(RegistryHiveOnDemand hive, string keyPath, List<Software> softwareList, PSCmdlet? cmdlet)
+        {
+            try
+            {
+                var uninstallKey = hive.GetKey(keyPath);
+                if (uninstallKey == null) return;
+
+                foreach (var subKey in uninstallKey.SubKeys)
+                {
+                    try
+                    {
+                        var displayName = GetStringValue(subKey, "DisplayName");
+
+                        // Only include entries with a display name
+                        if (!string.IsNullOrEmpty(displayName))
+                        {
+                            var registryKeyPath = $@"HKLM\SOFTWARE\{keyPath}\{subKey.KeyName}";
+
+                            // Get raw values from registry
+                            var displayVersionRaw = GetStringValue(subKey, "DisplayVersion");
+                            var installDateRaw = GetStringValue(subKey, "InstallDate");
+                            var publisherRaw = GetStringValue(subKey, "Publisher");
+
+                            // Parse version - use parsed Version if successful, otherwise original string
+                            object? displayVersion = null;
+                            if (!string.IsNullOrEmpty(displayVersionRaw))
+                            {
+                                var parsedVersion = FormatUtilityService.ParseVersion(displayVersionRaw!);
+                                if (parsedVersion != null)
+                                {
+                                    displayVersion = parsedVersion;
+                                }
+                                else
+                                {
+                                    displayVersion = displayVersionRaw;
+                                }
+                            }
+
+                            // Parse install date - use parsed DateTime if successful, otherwise original string
+                            object? installDate = null;
+                            if (!string.IsNullOrEmpty(installDateRaw))
+                            {
+                                var parsedDate = FormatUtilityService.ParseDate(installDateRaw!);
+                                if (parsedDate != null)
+                                {
+                                    installDate = parsedDate;
+                                }
+                                else
+                                {
+                                    installDate = installDateRaw;
+                                }
+                            }
+
+                            var software = new Software
+                            {
+                                DisplayName = displayName!, // Already checked for null/empty above
+                                Publisher = publisherRaw ?? string.Empty,
+                                DisplayVersion = displayVersion,
+                                InstallDate = installDate,
+                                RegistryKeyPath = registryKeyPath
+                            };
+
+                            softwareList.Add(software);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LoggingService.WriteVerbose(cmdlet, ServiceName,
+                            $"Error reading software entry {subKey.KeyName}: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingService.WriteVerbose(cmdlet, ServiceName,
+                    $"Error reading uninstall key {keyPath}: {ex.Message}");
             }
         }
 

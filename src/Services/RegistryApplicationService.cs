@@ -96,6 +96,10 @@ namespace PSWindowsImageTools.Services
                 var nativeService = GetNativeRegistryService(mountedImage.MountId);
 
                 // Apply operations using native registry service
+                if (mountedImage.MountPath == null)
+                {
+                    throw new InvalidOperationException("Image mount path is null");
+                }
                 bool success = nativeService.ApplyRegistryOperations(mountedImage.MountPath.FullName, operations, cmdlet);
 
                 if (success)
@@ -169,6 +173,8 @@ namespace PSWindowsImageTools.Services
         /// </summary>
         private string GetHivePath(MountedWindowsImage mountedImage, string hive)
         {
+            if (mountedImage.MountPath == null)
+                throw new InvalidOperationException("Mount path is null");
             var mountPath = mountedImage.MountPath.FullName;
             var upperHive = hive.ToUpperInvariant();
 

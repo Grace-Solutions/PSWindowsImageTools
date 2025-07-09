@@ -115,6 +115,8 @@ namespace PSWindowsImageTools.Cmdlets
             
             foreach (var image in MountedImages)
             {
+                if (image.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var autopilotPath = System.IO.Path.Combine(image.MountPath.FullName, "Windows", "Provisioning", "Autopilot", "AutopilotConfigurationFile.json");
                 WriteObject($"  Target: {image.ImageName} ({image.MountPath.FullName})");
                 WriteObject($"  Configuration would be written to: {autopilotPath}");

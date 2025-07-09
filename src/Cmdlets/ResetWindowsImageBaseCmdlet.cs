@@ -115,18 +115,18 @@ namespace PSWindowsImageTools.Cmdlets
                     
                     LoggingService.WriteProgress(this, $"{operationName} Windows Image Base", 
                         $"[{i + 1} of {_allMountedImages.Count}] - {mountedImage.ImageName}", 
-                        $"Processing {mountedImage.MountPath.FullName} ({progress}%)", progress);
+                        $"Processing {mountedImage.MountPath?.FullName ?? "Unknown"} ({progress}%)", progress);
 
                     try
                     {
                         var result = ProcessSingleImage(mountedImage, i + 1, _allMountedImages.Count);
                         results.Add(result);
                         
-                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully processed: {mountedImage.MountPath.FullName}");
+                        LoggingService.WriteVerbose(this, $"[{i + 1} of {_allMountedImages.Count}] - Successfully processed: {mountedImage.MountPath?.FullName ?? "Unknown"}");
                     }
                     catch (Exception ex)
                     {
-                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to process {mountedImage.MountPath.FullName}: {ex.Message}", ex);
+                        LoggingService.WriteError(this, $"[{i + 1} of {_allMountedImages.Count}] - Failed to process {mountedImage.MountPath?.FullName ?? "Unknown"}: {ex.Message}", ex);
                         
                         // Update status to failed
                         mountedImage.Status = MountStatus.Failed;
@@ -183,9 +183,9 @@ namespace PSWindowsImageTools.Cmdlets
             try
             {
                 // Validate mount path exists
-                if (!mountedImage.MountPath.Exists)
+                if (mountedImage.MountPath?.Exists != true)
                 {
-                    throw new DirectoryNotFoundException($"Mount path does not exist: {mountedImage.MountPath.FullName}");
+                    throw new DirectoryNotFoundException($"Mount path does not exist: {mountedImage.MountPath?.FullName ?? "Unknown"}");
                 }
 
                 LoggingService.WriteVerbose(this, $"[{currentIndex} of {totalCount}] - Processing image at {mountedImage.MountPath.FullName}");

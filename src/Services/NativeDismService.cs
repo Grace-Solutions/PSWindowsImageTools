@@ -155,24 +155,34 @@ namespace PSWindowsImageTools.Services
                 }
                 catch (Exception ex) when (ex.HResult == unchecked((int)0xC142010C))
                 {
-                    // Image is still in use - try to force discard
-                    LoggingService.WriteVerbose(cmdlet, ServiceName, "Image in use, attempting force discard...");
+                    // Image is still in use - try multiple cleanup strategies
+                    LoggingService.WriteVerbose(cmdlet, ServiceName, "Image in use (0xC142010C), attempting cleanup and force discard...");
+
+                    // Force aggressive cleanup
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
+
+                    // Wait a bit longer for handles to release
+                    System.Threading.Thread.Sleep(500);
 
                     try
                     {
+                        // Try force discard without progress callback to avoid any handle issues
                         DismNativeApi.DismUnmountImage(
                             mountPath,
                             DismNativeApi.UnmountFlags.DISM_DISCARD_IMAGE,
                             IntPtr.Zero,
-                            nativeCallback,
+                            null, // No progress callback for force unmount
                             IntPtr.Zero);
 
                         LoggingService.WriteVerbose(cmdlet, ServiceName, "Image force unmounted (discarded) successfully");
                         return true;
                     }
-                    catch
+                    catch (Exception forceEx)
                     {
-                        // If force discard also fails, rethrow original exception
+                        LoggingService.WriteError(cmdlet, ServiceName,
+                            $"Force unmount also failed. Original: {ex.Message}, Force: {forceEx.Message}");
                         throw ex;
                     }
                 }

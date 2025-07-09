@@ -88,6 +88,10 @@ namespace PSWindowsImageTools.Services
                         $"Installing Unattend XML configuration to {image.ImageName}");
 
                     // Create the target directory structure
+                    if (image.MountPath == null)
+                    {
+                        throw new InvalidOperationException("Image mount path is null");
+                    }
                     var pantherPath = Path.Combine(image.MountPath.FullName, "Windows", "Panther");
                     if (!Directory.Exists(pantherPath))
                     {

@@ -46,9 +46,25 @@ namespace PSWindowsImageTools.Services
                     throw new InvalidOperationException($"No Windows directory found at mount path. Ensure the image is properly mounted at: {mountPath}");
                 }
 
-                // Read complete registry information using OfflineRegistryService
-                using var registryService = new OfflineRegistryService();
-                advancedInfo.RegistryInfo = registryService.ReadOfflineRegistryInfo(mountPath, cmdlet);
+                // Read registry information using RegistryPackageService
+                using var registryService = new RegistryPackageService();
+
+                // Get Windows version info
+                var versionInfo = registryService.ReadWindowsVersionInfo(mountPath, cmdlet);
+                foreach (var kvp in versionInfo)
+                {
+                    advancedInfo.CurrentVersion[kvp.Key] = kvp.Value;
+                }
+
+                // Get installed software as proper Software objects
+                advancedInfo.Software = registryService.GetInstalledSoftware(mountPath, cmdlet);
+
+                // Get Windows Update configuration
+                var wuConfig = registryService.ReadWindowsUpdateConfiguration(mountPath, cmdlet);
+                foreach (var kvp in wuConfig)
+                {
+                    advancedInfo.WindowsUpdate[kvp.Key] = kvp.Value;
+                }
 
                 LoggingService.WriteVerbose(cmdlet, ServiceName,
                     $"Successfully collected advanced registry information from mounted image");

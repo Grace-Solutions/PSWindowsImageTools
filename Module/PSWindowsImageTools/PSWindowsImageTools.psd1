@@ -37,7 +37,6 @@
         'bin\PSWindowsImageTools.dll',
         'bin\Microsoft.Dism.dll',
         'bin\Registry.dll',
-        'bin\System.Data.SQLite.dll',
         'bin\Newtonsoft.Json.dll',
         'bin\HtmlAgilityPack.dll'
     )

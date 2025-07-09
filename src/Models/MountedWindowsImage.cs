@@ -41,7 +41,7 @@ namespace PSWindowsImageTools.Models
         /// <summary>
         /// Directory where the image is mounted
         /// </summary>
-        public DirectoryInfo MountPath { get; set; } = new DirectoryInfo(string.Empty);
+        public DirectoryInfo? MountPath { get; set; }
 
         /// <summary>
         /// GUID used for organizing mounts from the same WIM file
@@ -83,7 +83,8 @@ namespace PSWindowsImageTools.Models
         /// </summary>
         public override string ToString()
         {
-            return $"[{ImageIndex}] {ImageName} ({Edition}) - {MountPath}";
+            var mountPathStr = MountPath?.FullName ?? "Not mounted";
+            return $"[{ImageIndex}] {ImageName} ({Edition}) - {mountPathStr}";
         }
     }
 

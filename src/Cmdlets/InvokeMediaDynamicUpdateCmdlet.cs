@@ -431,10 +431,12 @@ namespace PSWindowsImageTools.Cmdlets
         {
             try
             {
-                LoggingService.WriteVerbose(this, ServiceName, $"Dismounting image from {mountedImage.MountPath.FullName} using native DISM API");
+                LoggingService.WriteVerbose(this, ServiceName, $"Dismounting image from {mountedImage.MountPath?.FullName ?? "Unknown"} using native DISM API");
 
                 // Use native DISM service for dismounting
                 using var nativeDismService = new NativeDismService();
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 var dismountSuccess = nativeDismService.UnmountImage(
                     mountedImage.MountPath.FullName,
                     commitChanges: true,
@@ -522,6 +524,8 @@ namespace PSWindowsImageTools.Cmdlets
                     $"Applying {updateType} update: {updateFile.Name} to {mountedImage.ImageName}");
 
                 // Use DISM API to add the package
+                if (mountedImage.MountPath == null)
+                    throw new InvalidOperationException("Mount path is null");
                 using var session = Microsoft.Dism.DismApi.OpenOfflineSession(mountedImage.MountPath.FullName);
                 Microsoft.Dism.DismApi.AddPackage(session, updateFile.FullName, ignoreCheck: false, preventPending: false);
 
@@ -555,7 +559,7 @@ namespace PSWindowsImageTools.Cmdlets
                 var dismProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "dism.exe",
-                    Arguments = $"/image:\"{mountedImage.MountPath.FullName}\" /cleanup-image /StartComponentCleanup /ResetBase",
+                    Arguments = $"/image:\"{mountedImage.MountPath?.FullName ?? "Unknown"}\" /cleanup-image /StartComponentCleanup /ResetBase",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -592,7 +596,7 @@ namespace PSWindowsImageTools.Cmdlets
                 var dismProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "dism.exe",
-                    Arguments = $"/image:\"{mountedImage.MountPath.FullName}\" /cleanup-image /CheckHealth",
+                    Arguments = $"/image:\"{mountedImage.MountPath?.FullName ?? "Unknown"}\" /cleanup-image /CheckHealth",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -714,7 +718,7 @@ namespace PSWindowsImageTools.Cmdlets
                         {
                             // Check if this directory is still in use by a mounted image
                             var isInUse = _allMountedImages.Any(img =>
-                                string.Equals(img.MountPath.FullName, subdir.FullName, StringComparison.OrdinalIgnoreCase));
+                                string.Equals(img.MountPath?.FullName, subdir.FullName, StringComparison.OrdinalIgnoreCase));
 
                             if (!isInUse && subdir.GetFileSystemInfos().Length == 0)
                             {
