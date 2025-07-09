@@ -3,7 +3,7 @@
     RootModule = 'bin\PSWindowsImageTools.dll'
 
     # Version number of this module.
-    ModuleVersion = '2025.06.18.1'
+    ModuleVersion = '2025.07.09.1'
 
     # Supported PSEditions
     CompatiblePSEditions = @('Desktop', 'Core')
@@ -21,7 +21,7 @@
     Copyright = 'Copyright (c) 2025 PSWindowsImageTools. All rights reserved.'
 
     # Description of the functionality provided by this module
-    Description = 'PowerShell module for Windows image customization and Windows Update management. Provides comprehensive tools for working with ISO, WIM, and ESD files, native DISM operations, and Windows Update catalog integration.'
+    Description = 'Comprehensive PowerShell module for Windows image management, customization, and deployment automation. Features native DISM API integration, registry operations, driver management, wallpaper configuration, Autopilot setup, and Windows Update catalog integration with enterprise-grade tools for WIM/ESD manipulation.'
 
     # Minimum version of the PowerShell engine required by this module
     PowerShellVersion = '5.1'
@@ -68,6 +68,8 @@
         'Add-SetupCompleteAction',
         'Reset-WindowsImageBase',
         'Invoke-MediaDynamicUpdate',
+        'Install-WindowsUpdateFile',
+        'Set-WindowsImageWallpaper',
 
         # Driver Management
         'Get-INFDriverList',
@@ -88,6 +90,7 @@
         # Registry Operations
         'Get-RegistryOperationList',
         'Write-RegistryOperationList',
+        'Read-RegistryHiveOnDemand',
 
         # Autopilot Configuration Management
         'Get-AutopilotConfiguration',

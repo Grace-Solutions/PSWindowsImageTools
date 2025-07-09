@@ -1,20 +1,24 @@
 # PSWindowsImageTools
 
-A comprehensive PowerShell module for Windows image management, ADK automation, and deployment workflows. Streamline your Windows deployment process with powerful cmdlets for image customization, update management, and component installation.
+A comprehensive PowerShell module for Windows image management, customization, and deployment automation. Built for enterprise environments requiring advanced WIM/ESD manipulation, driver integration, registry operations, and system customization with native Windows APIs and best practices.
 
 ## 🚀 Key Features
 
-### 🖼️ **Windows Image Management**
-- Mount, modify, and manage Windows WIM/ESD images
-- Full pipeline support for batch operations
-- Automatic cleanup and error handling
-- Database tracking for operation history
+### 🖼️ **Advanced Windows Image Management**
+- Mount/unmount WIM and ESD files with native DISM API integration
+- Read-only and read-write mount modes with automatic permission management
+- Robust mount point management with GUID-based temporary directories
+- Advanced image information retrieval with comprehensive registry data extraction
+- Full pipeline support for batch operations with progress tracking
+- Automatic cleanup and error handling with proper resource disposal
 
-### 📦 **Windows Update Integration**
-- Search Microsoft Update Catalog with advanced filtering
+### 📦 **Comprehensive Update Management**
+- Search Microsoft Update Catalog with advanced filtering and KB correlation
 - Download updates with resume capability and integrity verification
-- Install updates into mounted images with progress tracking
-- Support for both file-based and pipeline workflows
+- Install CAB/MSU files into mounted images with validation and progress tracking
+- Dynamic update integration for Windows installation media
+- Patch Tuesday automation with scheduling and rollback capabilities
+- Support for both file-based and pipeline workflows with error handling
 
 ### 🛠️ **ADK Management & Automation**
 - Automatic detection and installation of latest Windows ADK
@@ -23,19 +27,23 @@ A comprehensive PowerShell module for Windows image management, ADK automation, 
 - Enhanced process monitoring with command-line transparency
 
 ### 🔧 **Advanced Image Customization**
-- Registry operations with hive mounting/unmounting
-- Driver integration with INF parsing and hardware ID extraction
-- Wallpaper and lockscreen configuration with multiple resolutions
-- Autopilot configuration management
-- Unattend.xml creation and modification
-- AppX package removal with regex filtering
-- Custom setup actions and first-boot scripts
+- Registry operations with direct hive reading and mounting/unmounting
+- Driver integration with INF parsing, hardware ID extraction, and validation
+- Wallpaper and lockscreen configuration with multiple resolution support
+- Native Windows API integration for permission management (TrustedInstaller)
+- Autopilot configuration management with JSON validation
+- Unattend.xml creation, modification, and validation
+- AppX package removal with advanced regex filtering and dependency checking
+- Custom setup actions and first-boot scripts with comprehensive error handling
 
-### 📊 **Enterprise Features**
-- SQLite database for operation tracking and inventory
-- Windows release information and KB correlation
-- Patch Tuesday automation and scheduling
-- Comprehensive logging and progress reporting
+### 📊 **Enterprise Integration & Features**
+- WSUS and Windows Update for Business support with policy management
+- Active Directory integration for deployment automation
+- Group Policy and registry customization with validation
+- Hardware-specific driver deployment with automatic detection
+- Windows release information and KB correlation with comprehensive reporting
+- PowerShell 5.1 and 7+ compatibility with cross-platform considerations
+- Comprehensive logging, progress reporting, and automated testing workflows
 
 ## 🏃‍♂️ Quick Start
 
@@ -100,6 +108,8 @@ $mounted | Dismount-WindowsImageList -Save
 | `Write-RegistryOperationList` | Apply registry operations |
 | `Read-RegistryHiveOnDemand` | Read registry hives without mounting |
 | `Add-SetupCompleteAction` | Add custom first-boot actions |
+| `Install-WindowsUpdateFile` | Install CAB/MSU files into images |
+| `Reset-WindowsImageBase` | Reset image base for space optimization |
 
 ### **Autopilot & Configuration**
 | Cmdlet | Description |
@@ -109,6 +119,13 @@ $mounted | Dismount-WindowsImageList -Save
 | `Export-AutopilotConfiguration` | Save Autopilot configuration |
 | `Install-AutopilotConfiguration` | Apply to mounted images |
 | `New-AutopilotConfiguration` | Create new configuration |
+| `Install-UnattendXMLConfiguration` | Apply unattend.xml to images |
+
+### **WinPE & Optional Components**
+| Cmdlet | Description |
+|--------|-------------|
+| `Add-WinPEOptionalComponent` | Add optional components to WinPE |
+| `Invoke-MediaDynamicUpdate` | Apply dynamic updates to installation media |
 
 
 
